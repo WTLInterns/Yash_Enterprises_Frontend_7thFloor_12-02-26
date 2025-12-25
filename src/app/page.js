@@ -1,65 +1,154 @@
-import Image from "next/image";
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import Button from "@/components/ui/Button";
+import RealtimeStatusCard from "@/components/dashboard/RealtimeStatusCard";
+import StaffingStrengthCard from "@/components/dashboard/StaffingStrengthCard";
+import TeamwiseAttendance from "@/components/dashboard/TeamwiseAttendance";
+import EmployeesTable from "@/components/dashboard/EmployeesTable";
+import OffDutyEmployees from "@/components/dashboard/OffDutyEmployees";
+import StatCard from "@/components/dashboard/StatCard";
+import { getDashboardOverview } from "@/services/dashboard.service";
 
-export default function Home() {
+function DownloadIcon({ className }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M12 3v10m0 0 4-4m-4 4-4-4"
+        className="stroke-current"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 17v2c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-2"
+        className="stroke-current"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function UsersIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"
+        className="stroke-current"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M4 20c.8-3.3 4-5.5 8-5.5s7.2 2.2 8 5.5"
+        className="stroke-current"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6.5 10.2a3.2 3.2 0 1 1 4.2-3.1"
+        className="stroke-current"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        opacity="0.35"
+      />
+    </svg>
+  );
+}
+
+function PauseIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M8 7v10M16 7v10" className="stroke-current" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10Z"
+        className="stroke-current"
+        strokeWidth="1.5"
+        opacity="0.25"
+      />
+    </svg>
+  );
+}
+
+export default async function Home() {
+  const data = await getDashboardOverview();
+
+  return (
+    <DashboardLayout
+      navigation={data.navigation}
+      header={{
+        project: data.project,
+        user: data.user,
+        notifications: data.notifications,
+        tabs: data.headerTabs?.items || [],
+        activeTabKey: data.headerTabs?.activeTabKey,
+      }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-lg font-semibold text-slate-900">Realtime Dashboard</div>
+          <div className="mt-1 text-sm text-slate-500">Overview of punch activity and staffing</div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        <Button className="rounded-xl">
+          <DownloadIcon className="h-5 w-5" />
+          Attendance Status
+        </Button>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-12">
+        <div className="xl:col-span-4">
+          <RealtimeStatusCard data={data.realtimeStatus} />
+        </div>
+
+        <div className="xl:col-span-3">
+          <div className="grid grid-cols-1 gap-5">
+            <StatCard
+              title="Punched In (Inactive)"
+              value={data.realtimeStatus?.punchedInInactive ?? 0}
+              subtitle="Employees who are punched in but marked inactive"
+              accent="amber"
+              icon={<PauseIcon className="h-6 w-6" />}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+            <StaffingStrengthCard staffingStrength={data.staffingStrength} />
+          </div>
         </div>
-      </main>
-    </div>
+
+        <div className="xl:col-span-5">
+          <TeamwiseAttendance items={data.teamwiseAttendance} />
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-12">
+        <div className="xl:col-span-8">
+          <EmployeesTable employees={data.employees} />
+        </div>
+        <div className="xl:col-span-4">
+          <OffDutyEmployees employees={data.offDutyEmployees} />
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+        <StatCard
+          title="Total Employees"
+          value={data.realtimeStatus?.totalEmployees ?? 0}
+          subtitle="Total mapped employees"
+          accent="sky"
+          icon={<UsersIcon className="h-6 w-6" />}
+        />
+        <StatCard
+          title="Punched In"
+          value={data.realtimeStatus?.punchedIn ?? 0}
+          subtitle="Currently inside"
+          accent="emerald"
+          icon={<UsersIcon className="h-6 w-6" />}
+        />
+        <StatCard
+          title="Punched Out"
+          value={data.realtimeStatus?.punchedOut ?? 0}
+          subtitle="Currently outside"
+          accent="rose"
+          icon={<UsersIcon className="h-6 w-6" />}
+        />
+      </div>
+    </DashboardLayout>
   );
 }
