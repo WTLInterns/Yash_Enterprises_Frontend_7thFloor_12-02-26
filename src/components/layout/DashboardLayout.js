@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 // Navigation items
 const navigationItems = [
   { key: "dashboard", label: "Dashboard", href: "/", icon: "dashboard" },
+    { key: "customers", label: "Customers", href: "/customers", icon: "org" },
   { key: "attendance", label: "Attendance", href: "/attendance", icon: "attendance" },
   { key: "leaves", label: "Leaves", href: "/leaves", icon: "leaves" },
   { key: "organization", label: "Organization", href: "/organization", icon: "org" },
