@@ -1,9 +1,10 @@
 'use client'; // Add this at the very top
 
-import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ToastContainer, toast } from 'react-toastify';
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
-import { useRouter } from 'next/navigation';
 
 // Navigation items
 const navigationItems = [
@@ -25,6 +26,33 @@ const navigationItems = [
 export default function DashboardLayout({ header, children }) {
     const pathname = usePathname();
   const router = useRouter();
+
+  // Simple auth guard: redirect to /login if not logged in
+  useEffect(() => {
+
+    // Do not guard the login page itself
+    if (pathname === '/login') return;
+
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        router.replace('/login');
+      }
+    }
+  }, [pathname, router]);
+
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('auth_token');
+      } catch (e) {
+        // ignore
+      }
+    }
+    toast.success('Logged out successfully');
+    router.push('/login');
+  };
+
    // Sidebar active item
   const getActiveKey = () => {
     const item = navigationItems.find(item =>
@@ -53,8 +81,9 @@ export default function DashboardLayout({ header, children }) {
           items={navigationItems} 
           activeKey={getActiveKey()} 
           brand="YAS" 
+          onLogout={handleLogout}
         />
-        
+
 
           <div className="flex min-w-0 flex-1 flex-col">
           {/* TOPBAR */}
@@ -75,6 +104,7 @@ export default function DashboardLayout({ header, children }) {
           </main>
         </div>
       </div>
+      <ToastContainer position="top-right" autoClose={2000} hideProgressBar />
     </div>
   );
 }

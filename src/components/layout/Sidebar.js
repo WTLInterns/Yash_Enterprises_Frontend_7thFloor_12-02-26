@@ -200,6 +200,27 @@ function NavIcon({ name, className }) {
     );
   }
 
+  if (name === "logout") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
+        <path
+          d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"
+          className="stroke-current"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M14 9l3 3-3 3m-3-3h9"
+          className="stroke-current"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 24 24" fill="none" className={common} aria-hidden="true">
       <path
@@ -218,7 +239,7 @@ function NavIcon({ name, className }) {
   );
 }
 
-export default function Sidebar({ items = [], activeKey = "dashboard", brand = "YAS" }) {
+export default function Sidebar({ items = [], activeKey = "dashboard", brand = "YAS", onLogout }) {
   // Default menu items
   const defaultItems = [
     {
@@ -345,6 +366,19 @@ export default function Sidebar({ items = [], activeKey = "dashboard", brand = "
             </a>
           );
         })}
+        {onLogout && (
+          <>
+            <div className="my-2 border-t border-slate-200" />
+            <button
+              type="button"
+              onClick={onLogout}
+              className="mt-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              <NavIcon name="logout" className="text-red-500" />
+              <span className="truncate">Logout</span>
+            </button>
+          </>
+        )}
       </nav>
     </aside>
   );

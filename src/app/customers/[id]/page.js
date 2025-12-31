@@ -1,50 +1,112 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import DashboardLayout from '@/components/layout/DashboardLayout';
-
-const mockCustomers = [
-  { id: '1', name: 'Satpute Sar' },
-  { id: '2', name: 'Rushali Pawar' },
-];
-
-const initialCases = {
-  '1': [
-    { id: 'case-1', name: 'Case One' },
-    { id: 'case-2', name: 'Case Two' },
-  ],
-  '2': [
-    { id: 'case-1', name: 'Case One' },
-  ],
-};
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import { backendApi } from "@/services/api";
 
 export default function CustomerDetailPage() {
   const params = useParams();
   const customerId = params?.id;
 
-  const customer = useMemo(
-    () => mockCustomers.find((c) => c.id === customerId) || { id: customerId, name: 'Customer' },
-    [customerId]
-  );
+  const [customer, setCustomer] = useState(null);
+  const [cases, setCases] = useState([]);
+  const [loadingCases, setLoadingCases] = useState(false);
+  const [loadingCustomer, setLoadingCustomer] = useState(false);
 
-  const [cases, setCases] = useState(initialCases[customerId] || []);
+  useEffect(() => {
+    if (!customerId) return;
+
+    let isMounted = true;
+
+    async function loadCustomer() {
+      try {
+        setLoadingCustomer(true);
+        const data = await backendApi.get(`/clients/${customerId}`);
+        if (!isMounted) return;
+        setCustomer(data);
+      } catch (err) {
+        console.error("Failed to load customer", err);
+        if (!isMounted) return;
+        setCustomer({ id: customerId, name: "Customer" });
+      } finally {
+        if (isMounted) setLoadingCustomer(false);
+      }
+    }
+
+    async function loadCases() {
+      try {
+        setLoadingCases(true);
+        const data = await backendApi.get(`/cases/client/${customerId}`);
+        if (!isMounted) return;
+        setCases(data || []);
+      } catch (err) {
+        console.error("Failed to load cases", err);
+      } finally {
+        if (isMounted) setLoadingCases(false);
+      }
+    }
+
+    loadCustomer();
+    loadCases();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [customerId]);
   const [isCaseModalOpen, setIsCaseModalOpen] = useState(false);
-  const [caseName, setCaseName] = useState('');
+  const [caseName, setCaseName] = useState("");
 
-  const handleAddCase = (e) => {
+  const handleAddCase = async (e) => {
     e.preventDefault();
-    if (!caseName.trim()) return;
-    const newCase = { id: `case-${cases.length + 1}`, name: caseName.trim() };
-    setCases((prev) => [...prev, newCase]);
-    setCaseName('');
-    setIsCaseModalOpen(false);
+    if (!caseName.trim() || !customerId) return;
+
+    try {
+      const trimmedName = caseName.trim();
+
+      const payload = {
+        // Backend CaseDto expects caseNumber and title as @NotBlank
+        caseNumber: `C-${Date.now()}`,
+        title: trimmedName,
+        description: "",
+        status: "OPEN",
+        priority: "MEDIUM",
+        clientId: Number(customerId),
+      };
+      const created = await backendApi.post("/cases", payload);
+      setCases((prev) => [...prev, created]);
+      setCaseName("");
+      setIsCaseModalOpen(false);
+    } catch (err) {
+      console.error("Failed to create case", err);
+    }
   };
 
-  const handleRemoveCase = (id) => {
-    setCases((prev) => prev.filter((c) => c.id !== id));
+  const handleRemoveCase = async (id) => {
+    try {
+      await backendApi.delete(`/cases/${id}`);
+      setCases((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error("Failed to delete case", err);
+    }
   };
+
+  if (!customer && (loadingCustomer || loadingCases)) {
+    return (
+      <DashboardLayout
+        header={{
+          project: "Customer Details",
+          user: { name: "Admin User", role: "Administrator" },
+          notifications: [],
+        }}
+      >
+        <div className="p-4 text-sm text-slate-600">Loading customer...</div>
+      </DashboardLayout>
+    );
+  }
+
+  const safeCustomer = customer || { id: customerId, name: "Customer" };
 
   return (
     <DashboardLayout
@@ -61,9 +123,9 @@ export default function CustomerDetailPage() {
               <Link href="/customers" className="text-indigo-600 hover:underline">
                 Customers
               </Link>{' '}
-              / {customer.name}
+              / {safeCustomer.name}
             </p>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-900">{customer.name}</h1>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-900">{safeCustomer.name}</h1>
           </div>
         </div>
 
@@ -100,7 +162,9 @@ export default function CustomerDetailPage() {
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-slate-900">{item.name}</div>
+                    <div className="text-sm font-medium text-slate-900">
+                      {item.title || item.caseNumber || `Case #${item.id}`}
+                    </div>
                   </div>
                 </Link>
                 <div className="flex items-center gap-2">

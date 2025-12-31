@@ -1,24 +1,52 @@
-
-'use client';
+"use client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import AddEmployeeForm from "../addOrganization/page";
-import { useState } from "react";
-// Mock employee data
-const employees = [
-    {
-        id: 1,
-        adminName: "Bhagyashri Dome",
-        adminId: "JD001",
-        role: "Company Admin",
-        employeeVisibility: "All",
-        reportsTo: "Bapusaheb Satpute",
-        directReportees: "0",
-        totalReportees: "0",
-    },
-];
+import { useEffect, useState } from "react";
+import { backendApi } from "@/services/api";
 
 export default function Admins() {
     const [openAddForm, setOpenAddForm] = useState(false);
+    const [employees, setEmployees] = useState([]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        async function loadAdmins() {
+            try {
+                const data = await backendApi.get("/test/employees");
+                if (!isMounted) return;
+
+                const mapped = (data || []).map((e) => {
+                    const adminName = e.firstName
+                        ? `${e.firstName} ${e.lastName || ""}`.trim()
+                        : e.employeeId || e.userId || "-";
+
+                    return {
+                        id: e.id,
+                        adminName,
+                        name: adminName,
+                        adminId: e.employeeId || e.userId || "-",
+                        role: e.role?.name || "Employee",
+                        employeeVisibility: "All",
+                        reportsTo: e.reportingManagerName || (e.reportingManager ? e.reportingManager.firstName || "" : "-"),
+                        directReportees: 0,
+                        totalReportees: 0,
+                    };
+                });
+
+                setEmployees(mapped);
+            } catch (err) {
+                console.error("Failed to load admins", err);
+            }
+        }
+
+        loadAdmins();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
     return (
         <DashboardLayout
             header={{
@@ -70,7 +98,7 @@ export default function Admins() {
                         </button>
                         <button className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.01a3.001 3.001 0 010 5.98V16a1 1 0 11-2 0v-1.01a3.001 3.001 0 010-5.98V4a1 1 0 011-1z" />
+                                <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4a1 1 0 011-1z" />
                             </svg>
                             <span>Filter</span>
                         </button>
@@ -119,7 +147,7 @@ export default function Admins() {
                                             <div className="flex items-center">
                                                 <div className="h-10 w-10 flex-shrink-0">
                                                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-sm font-medium text-indigo-700">
-                                                        {employee.adminName.split(' ').map(n => n[0]).join('')}
+                                                        {(employee.adminName || "-").split(' ').filter(Boolean).map(n => n[0]).join('')}
                                                     </div>
                                                 </div>
                                                 <div className="ml-4">

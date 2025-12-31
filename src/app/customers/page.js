@@ -1,32 +1,13 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import DashboardLayout from '@/components/layout/DashboardLayout';
-
-const initialCustomers = [
-  {
-    id: '1',
-    name: 'Satpute Sar',
-    branch: 'Yashraj Enterprises',
-    email: 'yashraj.ent.227@gmail.com',
-    phone: '',
-    owner: 'Yashraj Enterprises',
-    address: 'Pune'
-  },
-  {
-    id: '2',
-    name: 'Rushali Pawar',
-    branch: 'Pune',
-    email: 'yashraj.ent.227@gmail.com',
-    phone: '8830097-8229',
-    owner: 'Yashraj Enterprises',
-    address: 'Pune'
-  },
-];
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import { backendApi } from "@/services/api";
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState(initialCustomers);
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
@@ -37,28 +18,76 @@ export default function CustomersPage() {
     address: '',
   });
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCustomers() {
+      try {
+        setLoading(true);
+        const data = await backendApi.get("/clients");
+        if (!isMounted) return;
+
+        const mapped = (data || []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          branch: c.address,
+          email: c.email,
+          phone: c.contactPhone,
+          owner: "Yashraj Enterprises",
+          address: c.address,
+        }));
+
+        setCustomers(mapped);
+      } catch (err) {
+        console.error("Failed to load customers", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadCustomers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleAddCustomer = (e) => {
+  const handleAddCustomer = async (e) => {
     e.preventDefault();
     if (!form.name) return;
 
-    const newCustomer = {
-      id: String(customers.length + 1),
-      name: form.name,
-      branch: form.address,
-      email: form.email,
-      phone: form.phone,
-      owner: 'Yashraj Enterprises',
-      address: form.address,
-    };
+    try {
+      const payload = {
+        name: form.name,
+        email: form.email,
+        contactPhone: form.phone,
+        address: form.address,
+        isActive: true,
+      };
 
-    setCustomers((prev) => [...prev, newCustomer]);
-    setForm({ name: '', email: '', phone: '', address: '' });
-    setIsModalOpen(false);
+      const created = await backendApi.post("/clients", payload);
+
+      const mapped = {
+        id: created.id,
+        name: created.name,
+        branch: created.address,
+        email: created.email,
+        phone: created.contactPhone,
+        owner: "Yashraj Enterprises",
+        address: created.address,
+      };
+
+      setCustomers((prev) => [...prev, mapped]);
+      setForm({ name: "", email: "", phone: "", address: "" });
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error("Failed to add customer", err);
+    }
   };
 
   const openEditModal = (customer) => {
@@ -72,32 +101,51 @@ export default function CustomersPage() {
     setIsEditModalOpen(true);
   };
 
-  const handleUpdateCustomer = (e) => {
+  const handleUpdateCustomer = async (e) => {
     e.preventDefault();
     if (!editingCustomer) return;
 
-    setCustomers((prev) =>
-      prev.map((c) =>
-        c.id === editingCustomer.id
-          ? {
-              ...c,
-              name: form.name,
-              email: form.email,
-              phone: form.phone,
-              address: form.address,
-              branch: form.address || c.branch,
-            }
-          : c
-      )
-    );
+    try {
+      const payload = {
+        name: form.name,
+        email: form.email,
+        contactPhone: form.phone,
+        address: form.address,
+        isActive: true,
+      };
 
-    setEditingCustomer(null);
-    setIsEditModalOpen(false);
-    setForm({ name: '', email: '', phone: '', address: '' });
+      const updated = await backendApi.put(`/clients/${editingCustomer.id}`, payload);
+
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === editingCustomer.id
+            ? {
+                ...c,
+                name: updated.name,
+                email: updated.email,
+                phone: updated.contactPhone,
+                address: updated.address,
+                branch: updated.address || c.branch,
+              }
+            : c
+        )
+      );
+
+      setEditingCustomer(null);
+      setIsEditModalOpen(false);
+      setForm({ name: "", email: "", phone: "", address: "" });
+    } catch (err) {
+      console.error("Failed to update customer", err);
+    }
   };
 
-  const handleRemoveCustomer = (id) => {
-    setCustomers((prev) => prev.filter((c) => c.id !== id));
+  const handleRemoveCustomer = async (id) => {
+    try {
+      await backendApi.delete(`/clients/${id}`);
+      setCustomers((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error("Failed to delete customer", err);
+    }
   };
 
   return (

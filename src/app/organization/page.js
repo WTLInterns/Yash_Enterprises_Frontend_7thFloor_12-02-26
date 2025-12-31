@@ -1,35 +1,62 @@
-
-'use client';
+"use client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import AddEmployeeForm from "../addOrganization/page";
-import { useState } from "react";
-// Mock employee data
-const employees = [
-    {
-        id: 1,
-        name: "John Doe",
-        userId: "JD001",
-        employeeId: "EMP001",
-        phone: "+1 234 567 890",
-        joiningDate: "2023-01-15",
-        reportingManager: "Jane Smith",
-        team: "Engineering",
-        designation: "Senior Developer",
-        status: "Active",
-        leavePolicy: "Standard",
-        holidayPlan: "US Holidays",
-        baseSite: "New York",
-        sitePool: "US East",
-        city: "New York",
-        attendanceRestriction: "None",
-        inOutNotification: "Enabled",
-        workRestriction: "None",
-        defaultTransport: "Company Cab"
-    },
-];
+import { useEffect, useState } from "react";
+import { backendApi } from "@/services/api";
 
 export default function OrganizationPage() {
     const [openAddForm, setOpenAddForm] = useState(false);
+    const [employees, setEmployees] = useState([]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        async function loadEmployees() {
+            try {
+                const data = await backendApi.get("/test/employees");
+                if (!isMounted) return;
+
+                const mapped = (data || []).map((e) => {
+                    const name = e.firstName
+                        ? `${e.firstName} ${e.lastName || ""}`.trim()
+                        : e.fullName || e.employeeId || e.userId || "-";
+
+                    return {
+                        id: e.id,
+                        name,
+                        userId: e.userId,
+                        employeeId: e.employeeId,
+                        phone: e.phone,
+                        joiningDate: e.joiningDate,
+                        reportingManager: e.reportingManagerName || e.reportingManager || "-",
+                        team: e.teamName,
+                        designation: e.designation,
+                        status: e.status,
+                        leavePolicy: e.leavePolicy,
+                        holidayPlan: e.holidayPlan,
+                        baseSite: e.baseSite,
+                        sitePool: e.sitePool,
+                        city: e.city,
+                        attendanceRestriction: e.attendanceRestriction,
+                        inOutNotification: e.inOutNotification,
+                        workRestriction: e.workRestriction,
+                        defaultTransport: e.defaultTransport,
+                    };
+                });
+
+                setEmployees(mapped);
+            } catch (err) {
+                console.error("Failed to load employees", err);
+            }
+        }
+
+        loadEmployees();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
     return (
         <DashboardLayout
             header={{
