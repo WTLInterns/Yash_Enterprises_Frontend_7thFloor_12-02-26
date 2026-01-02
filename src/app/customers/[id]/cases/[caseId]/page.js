@@ -20,6 +20,7 @@ export default function CaseDetailModalPage() {
   const [file, setFile] = useState(null);
   const [docType, setDocType] = useState("");
   const fileInputRef = useRef(null);
+  const [viewingDoc, setViewingDoc] = useState(null);
 
   useEffect(() => {
     if (!caseId) return;
@@ -114,9 +115,18 @@ export default function CaseDetailModalPage() {
     }
   }
 
-  function handleViewDoc(id) {
-    if (!id) return;
-    window.open(`http://localhost:8080/api/case-documents/download/${id}`, "_blank");
+  function handleViewDoc(doc) {
+    if (!doc) return;
+    setViewingDoc(doc);
+  }
+
+  function closePdfModal() {
+    setViewingDoc(null);
+  }
+
+  function downloadDoc(doc) {
+    if (!doc) return;
+    window.open(`http://localhost:8080/api/case-documents/download/${doc.id}`, '_blank');
   }
 
   const caseTitle = caseData?.title || caseData?.caseNumber || `Case #${caseId}`;
@@ -185,27 +195,29 @@ export default function CaseDetailModalPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-slate-900">Documents</h2>
             </div>
-            <form onSubmit={handleUpload} className="flex items-center gap-3">
-              <input
-                type="text"
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                value={docType}
-                onChange={(e) => setDocType(e.target.value)}
-                placeholder="Enter document name"
-              />
+            <form onSubmit={handleUpload} className="flex items-center gap-3 mb-4">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-500"
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                  placeholder="Enter document name"
+                />
+              </div>
               <input
                 type="file"
-                accept="application/pdf"
+                accept="application/pdf,.pdf"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="text-xs"
+                className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                 ref={fileInputRef}
               />
               <button
                 type="submit"
                 disabled={uploading || !file}
-                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
               >
-                {uploading ? "Uploading..." : "+ Upload Doc"}
+                {uploading ? "Uploading..." : "Upload Document"}
               </button>
             </form>
           </div>
@@ -236,22 +248,37 @@ export default function CaseDetailModalPage() {
                         </svg>
                       </div>
                       <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                           {doc.documentName || "Document"}
                         </div>
-                        <div className="text-xs font-medium text-slate-900">
+                        <div className="text-sm font-medium text-slate-900">
                           {doc.fileName || "File"}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => handleViewDoc(doc.id)}
-                        className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
+                        onClick={() => handleViewDoc(doc)}
+                        className="text-indigo-600 hover:text-indigo-800 text-xs font-medium flex items-center gap-1"
                         title="View document"
                       >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                          <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                        </svg>
                         View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadDoc(doc)}
+                        className="text-green-600 hover:text-green-800 text-xs font-medium flex items-center gap-1"
+                        title="Download document"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                        Download
                       </button>
                       <button
                         type="button"
@@ -280,6 +307,55 @@ export default function CaseDetailModalPage() {
           </div>
         </div>
       </div>
+
+      {/* PDF Modal Viewer */}
+      {viewingDoc && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={closePdfModal} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="relative w-full max-w-6xl h-[90vh] bg-white rounded-xl shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b bg-white">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    {viewingDoc.documentName || viewingDoc.fileName || "Document"}
+                  </h3>
+                  <p className="text-sm text-slate-500">{viewingDoc.fileName}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closePdfModal}
+                  className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 bg-gray-100 p-1">
+                <iframe
+                  src={`http://localhost:8080/api/case-documents/view/${viewingDoc.id}`}
+                  className="w-full h-full border-0 rounded-lg"
+                  title="PDF Viewer"
+                  style={{ minHeight: 'calc(90vh - 80px)' }}
+                  onError={(e) => {
+                    console.error('PDF load error:', e);
+                    // Fallback: try opening in new tab if iframe fails
+                    window.open(`http://localhost:8080/api/case-documents/view/${viewingDoc.id}`, '_blank');
+                    e.target.style.display = 'none';
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'flex items-center justify-center h-full text-red-600';
+                    errorDiv.innerHTML = '<div class="text-center"><p class="text-lg font-medium">PDF Viewer Error</p><p class="text-sm mt-2">Opening in new tab...</p></div>';
+                    e.target.parentNode.appendChild(errorDiv);
+                  }}
+                  onLoad={() => {
+                    console.log('PDF loaded successfully');
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </DashboardLayout>
   );
 }

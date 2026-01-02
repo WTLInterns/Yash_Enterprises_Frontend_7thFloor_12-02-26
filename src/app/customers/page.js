@@ -103,7 +103,10 @@ export default function CustomersPage() {
 
   const handleUpdateCustomer = async (e) => {
     e.preventDefault();
-    if (!editingCustomer) return;
+    if (!editingCustomer || !editingCustomer.id) {
+      console.error('No editing customer or missing ID');
+      return;
+    }
 
     try {
       const payload = {
@@ -114,6 +117,7 @@ export default function CustomersPage() {
         isActive: true,
       };
 
+      console.log('Updating customer:', editingCustomer.id, payload);
       const updated = await backendApi.put(`/clients/${editingCustomer.id}`, payload);
 
       setCustomers((prev) =>

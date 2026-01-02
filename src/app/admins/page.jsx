@@ -13,7 +13,7 @@ export default function Admins() {
 
         async function loadAdmins() {
             try {
-                const data = await backendApi.get("/test/employees");
+                const data = await backendApi.get("/employees");
                 if (!isMounted) return;
 
                 const mapped = (data || []).map((e) => {
@@ -26,9 +26,9 @@ export default function Admins() {
                         adminName,
                         name: adminName,
                         adminId: e.employeeId || e.userId || "-",
-                        role: e.role?.name || "Employee",
+                        role: e.roleName || "Employee",
                         employeeVisibility: "All",
-                        reportsTo: e.reportingManagerName || (e.reportingManager ? e.reportingManager.firstName || "" : "-"),
+                        reportsTo: e.reportingManagerName || "-",
                         directReportees: 0,
                         totalReportees: 0,
                     };
@@ -165,7 +165,7 @@ export default function Admins() {
                                             {employee.employeeVisibility}
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
-                                            {new Date(employee.reportsTo).toLocaleDateString()}
+                                            {employee.reportsTo}
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
                                             {employee.directReportees}

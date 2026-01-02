@@ -14,6 +14,7 @@ export default function CustomerDetailPage() {
   const [cases, setCases] = useState([]);
   const [loadingCases, setLoadingCases] = useState(false);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!customerId) return;
@@ -23,28 +24,28 @@ export default function CustomerDetailPage() {
     async function loadCustomer() {
       try {
         setLoadingCustomer(true);
+        setError(null);
         const data = await backendApi.get(`/clients/${customerId}`);
         if (!isMounted) return;
         setCustomer(data);
       } catch (err) {
         console.error("Failed to load customer", err);
-        if (!isMounted) return;
-        setCustomer({ id: customerId, name: "Customer" });
-      } finally {
-        if (isMounted) setLoadingCustomer(false);
+        setError("Failed to load customer: " + err.message);
+        if (!isMounted) setLoadingCustomer(false);
       }
     }
 
     async function loadCases() {
       try {
         setLoadingCases(true);
+        setError(null);
         const data = await backendApi.get(`/cases/client/${customerId}`);
         if (!isMounted) return;
         setCases(data || []);
       } catch (err) {
         console.error("Failed to load cases", err);
-      } finally {
-        if (isMounted) setLoadingCases(false);
+        setError("Failed to load cases: " + err.message);
+        if (!isMounted) setLoadingCases(false);
       }
     }
 
@@ -234,7 +235,7 @@ export default function CustomerDetailPage() {
                     type="text"
                     value={caseName}
                     onChange={(e) => setCaseName(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="mt-1 w-full rounded-md border border-slate-900 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     placeholder="Enter case name"
                     required
                   />

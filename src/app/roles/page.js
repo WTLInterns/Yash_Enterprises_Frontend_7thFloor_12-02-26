@@ -1,35 +1,47 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Pencil, Trash2, Plus, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-
-
-const roles = [
-  {
-    name: 'Company Admin',
-    description: 'Super user who has access to all modules',
-  },
-  {
-    name: 'Global Read',
-    description: 'Read access to all modules',
-  },
-  {
-    name: 'Legacy Manager',
-    description: 'All access except shift/roster template and access control',
-  },
-  {
-    name: 'HR',
-    description: 'Read and write access to Field Executives module',
-  },
-  {
-    name: 'Accounts',
-    description: 'Download reports only',
-  },
-];
+import { backendApi } from '@/services/api';
 
 export default function RolesPage() {
-    const router = useRouter();
+  const router = useRouter();
+  const [roles, setRoles] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadRoles() {
+      try {
+        setLoading(true);
+        const data = await backendApi.get('/roles');
+        if (!isMounted) return;
+        setRoles(data || []);
+      } catch (err) {
+        console.error('Failed to load roles', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadRoles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleDelete = async (id) => {
+    try {
+      await backendApi.delete(`/roles/${id}`);
+      setRoles((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error('Failed to delete role', err);
+    }
+  };
 
   return (
      <DashboardLayout
@@ -57,10 +69,20 @@ export default function RolesPage() {
           (tab) => (
             <button
               key={tab}
+              onClick={() => {
+                if (tab === 'Roles') return;
+                const routes = {
+                  'Employees': '/employees',
+                  'Admins': '/admins',
+                  'Designation': '/designation',
+                  'Teams': '/teams'
+                };
+                router.push(routes[tab]);
+              }}
               className={`pb-3 ${
                 tab === 'Roles'
                   ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-500'
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {tab}
@@ -110,9 +132,23 @@ export default function RolesPage() {
             </thead>
 
             <tbody>
-              {roles.map((role, index) => (
+              {loading && (
+                <tr>
+                  <td colSpan={4} className="p-4 text-center text-gray-500">
+                    Loading roles...
+                  </td>
+                </tr>
+              )}
+              {!loading && roles.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="p-4 text-center text-gray-500">
+                    No roles found.
+                  </td>
+                </tr>
+              )}
+              {!loading && roles.map((role) => (
                 <tr
-                  key={index}
+                  key={role.id}
                   className="border-b last:border-none hover:bg-gray-50"
                 >
                   <td className="p-3">
@@ -127,7 +163,10 @@ export default function RolesPage() {
                       <button className="p-2 rounded-md bg-gray-100 hover:bg-gray-200">
                         <Pencil size={16} />
                       </button>
-                      <button className="p-2 rounded-md bg-red-50 text-red-600 hover:bg-red-100">
+                      <button
+                        onClick={() => handleDelete(role.id)}
+                        className="p-2 rounded-md bg-red-50 text-red-600 hover:bg-red-100"
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -146,7 +185,9 @@ export default function RolesPage() {
               <option>20</option>
             </select>
           </div>
-          <div>1–5 of 5</div>
+          <div>
+            {roles.length > 0 ? `1–${roles.length} of ${roles.length}` : '0 of 0'}
+          </div>
 
           <div className="flex gap-2">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-400">

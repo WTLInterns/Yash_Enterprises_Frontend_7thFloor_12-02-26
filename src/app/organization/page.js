@@ -13,13 +13,13 @@ export default function OrganizationPage() {
 
         async function loadEmployees() {
             try {
-                const data = await backendApi.get("/test/employees");
+                const data = await backendApi.get("/employees");
                 if (!isMounted) return;
 
                 const mapped = (data || []).map((e) => {
                     const name = e.firstName
                         ? `${e.firstName} ${e.lastName || ""}`.trim()
-                        : e.fullName || e.employeeId || e.userId || "-";
+                        : e.employeeId || e.userId || "-";
 
                     return {
                         id: e.id,
@@ -27,20 +27,20 @@ export default function OrganizationPage() {
                         userId: e.userId,
                         employeeId: e.employeeId,
                         phone: e.phone,
-                        joiningDate: e.joiningDate,
-                        reportingManager: e.reportingManagerName || e.reportingManager || "-",
-                        team: e.teamName,
-                        designation: e.designation,
-                        status: e.status,
-                        leavePolicy: e.leavePolicy,
-                        holidayPlan: e.holidayPlan,
-                        baseSite: e.baseSite,
-                        sitePool: e.sitePool,
-                        city: e.city,
-                        attendanceRestriction: e.attendanceRestriction,
-                        inOutNotification: e.inOutNotification,
-                        workRestriction: e.workRestriction,
-                        defaultTransport: e.defaultTransport,
+                        joiningDate: e.hiredAt,
+                        reportingManager: e.reportingManagerName || "-",
+                        team: e.teamName || "-",
+                        designation: e.designationName || "-",
+                        status: e.status || "-",
+                        leavePolicy: e.leavePolicy || "-",
+                        holidayPlan: e.holidayPlan || "-",
+                        baseSite: e.baseSite || "-",
+                        sitePool: e.sitePool || "-",
+                        city: e.city || "-",
+                        attendanceRestriction: e.attendanceRestriction || "-",
+                        inOutNotification: e.inOutNotification || "-",
+                        workRestriction: e.workRestriction || "-",
+                        defaultTransport: e.defaultTransport || "-",
                     };
                 });
 

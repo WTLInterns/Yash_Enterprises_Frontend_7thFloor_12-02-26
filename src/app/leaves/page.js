@@ -1,38 +1,134 @@
 'use client';
 
-import { CalendarDays, FileText, ClipboardList } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CalendarDays, FileText, ClipboardList, Plus, Check, X, Eye } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import { backendApi } from '@/services/api';
 
 export default function LeaveOverviewPage() {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [leaves, setLeaves] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'requests') {
+      let isMounted = true;
+      async function loadLeaves() {
+        try {
+          setLoading(true);
+          const data = await backendApi.get('/leaves');
+          if (!isMounted) return;
+          setLeaves(data || []);
+        } catch (err) {
+          console.error('Failed to load leaves', err);
+        } finally {
+          if (isMounted) setLoading(false);
+        }
+      }
+      loadLeaves();
+      return () => { isMounted = false; };
+    }
+  }, [activeTab]);
+
+  async function handleApprove(id) {
+    try {
+      await backendApi.put(`/leaves/${id}/approve`);
+      setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'APPROVED' } : l));
+    } catch (err) {
+      console.error('Failed to approve', err);
+    }
+  }
+
+  async function handleReject(id) {
+    try {
+      await backendApi.put(`/leaves/${id}/reject`);
+      setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: 'REJECTED' } : l));
+    } catch (err) {
+      console.error('Failed to reject', err);
+    }
+  }
+
   return (
     <DashboardLayout>
       {/* Tabs */}
       <div className="flex gap-6 border-b border-gray-200 px-6 pt-4">
-        <Tab active icon={<ClipboardList size={16} />} label="Overview" />
-        <Tab icon={<FileText size={16} />} label="Leaves Requests" />
-        <Tab icon={<CalendarDays size={16} />} label="Leave Balance" />
-        <Tab icon={<CalendarDays size={16} />} label="Comp Off Credit Request" />
+        <Tab active={activeTab === 'overview'} icon={<ClipboardList size={16} />} label="Overview" onClick={() => setActiveTab('overview')} />
+        <Tab active={activeTab === 'requests'} icon={<FileText size={16} />} label="Leaves Requests" onClick={() => setActiveTab('requests')} />
+        <Tab active={activeTab === 'balance'} icon={<CalendarDays size={16} />} label="Leave Balance" onClick={() => setActiveTab('balance')} />
+        <Tab active={activeTab === 'compoff'} icon={<CalendarDays size={16} />} label="Comp Off Credit Request" onClick={() => setActiveTab('compoff')} />
       </div>
 
       {/* Content */}
       <div className="bg-gray-100 min-h-screen p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* Left Card */}
-          <Card
-            title="Approved Leaves by Type"
-            filterLabel="Select Month and Year"
-            filterValue="December 2025"
-          />
-
-          {/* Right Card */}
-          <Card
-            title="Approved Leaves"
-            filterLabel="Select Year"
-            filterValue="2025"
-          />
-
-        </div>
+        {activeTab === 'overview' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card title="Approved Leaves by Type" filterLabel="Select Month and Year" filterValue="December 2025" />
+            <Card title="Approved Leaves" filterLabel="Select Year" filterValue="2025" />
+          </div>
+        )}
+        {activeTab === 'requests' && (
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Leave Requests</h2>
+            {loading ? (
+              <p className="text-sm text-gray-500">Loading...</p>
+            ) : leaves.length === 0 ? (
+              <p className="text-sm text-gray-500">No leave requests found.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-3 text-left">Employee</th>
+                    <th className="p-3 text-left">Type</th>
+                    <th className="p-3 text-left">From</th>
+                    <th className="p-3 text-left">To</th>
+                    <th className="p-3 text-left">Reason</th>
+                    <th className="p-3 text-left">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaves.map(l => (
+                    <tr key={l.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3">{l.employeeName || '-'}</td>
+                      <td className="p-3">{l.leaveType || '-'}</td>
+                      <td className="p-3">{l.startDate || '-'}</td>
+                      <td className="p-3">{l.endDate || '-'}</td>
+                      <td className="p-3">{l.reason || '-'}</td>
+                      <td className="p-3">
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                          l.status === 'APPROVED' ? 'bg-green-100 text-green-700' :
+                          l.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {l.status}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex justify-end gap-2">
+                          {l.status === 'PENDING' && (
+                            <>
+                              <button onClick={() => handleApprove(l.id)} className="p-1 rounded bg-green-100 text-green-600 hover:bg-green-200">
+                                <Check size={16} />
+                              </button>
+                              <button onClick={() => handleReject(l.id)} className="p-1 rounded bg-red-100 text-red-600 hover:bg-red-200">
+                                <X size={16} />
+                              </button>
+                            </>
+                          )}
+                          <button className="p-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200">
+                            <Eye size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+        {activeTab === 'balance' && <Card title="Leave Balance" filterLabel="Select Year" filterValue="2025" />}
+        {activeTab === 'compoff' && <Card title="Comp Off Credit Requests" filterLabel="Select Month" filterValue="December 2025" />}
       </div>
     </DashboardLayout>
   );
@@ -40,9 +136,10 @@ export default function LeaveOverviewPage() {
 
 /* ------------------ Components ------------------ */
 
-function Tab({ label, icon, active = false }) {
+function Tab({ label, icon, active = false, onClick }) {
   return (
     <button
+      onClick={onClick}
       className={`flex items-center gap-2 pb-3 text-sm font-medium ${
         active
           ? 'border-b-2 border-blue-600 text-blue-600'
@@ -58,7 +155,6 @@ function Tab({ label, icon, active = false }) {
 function Card({ title, filterLabel, filterValue }) {
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 min-h-[420px] relative">
-      
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <h2 className="text-sm font-semibold text-gray-900">

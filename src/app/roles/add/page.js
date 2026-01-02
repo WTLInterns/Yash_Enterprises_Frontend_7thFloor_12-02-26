@@ -1,9 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Plus } from 'lucide-react';
-
+import { backendApi } from '@/services/api';
 
 const leftPermissions = [
   'Dashboard',
@@ -26,6 +27,27 @@ const rightPermissions = [
 
 export default function AddRolePage() {
   const router = useRouter();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    try {
+      setSaving(true);
+      const payload = {
+        name: name.trim(),
+        description: description.trim(),
+        isActive: true,
+      };
+      await backendApi.post('/roles', payload);
+      router.push('/roles');
+    } catch (err) {
+      console.error('Failed to create role', err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <DashboardLayout
@@ -56,8 +78,12 @@ export default function AddRolePage() {
             ← Back
           </button>
 
-          <button className="bg-blue-600 text-white px-5 py-2 rounded-md text-sm hover:bg-blue-700">
-            Save
+          <button
+            onClick={handleSave}
+            disabled={saving || !name.trim()}
+            className="bg-blue-600 text-white px-5 py-2 rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
 
@@ -71,6 +97,8 @@ export default function AddRolePage() {
             <input
               className="w-full border rounded-md px-3 py-2 text-sm"
               placeholder="Enter role name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
             <div className="flex justify-between text-xs text-gray-400 mt-1">
               <span>This must be between 5 and 45 characters</span>
@@ -87,6 +115,8 @@ export default function AddRolePage() {
               className="w-full border rounded-md px-3 py-2 text-sm"
               placeholder="Enter role description"
               rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
             />
             <div className="flex justify-between text-xs text-gray-400 mt-1">
               <span>This must be between 5 and 100 characters</span>
