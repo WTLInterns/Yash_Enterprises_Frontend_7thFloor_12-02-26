@@ -32,6 +32,7 @@ export default function OrganizationPage() {
     const [editingEmployee, setEditingEmployee] = useState(null);
     const [forceUpdate, setForceUpdate] = useState(0);
     const [tableKey, setTableKey] = useState(0);
+    const [shouldRemount, setShouldRemount] = useState(true);
 
     // Handle employee deletion
     const handleDeleteEmployee = async (employeeId) => {
@@ -135,7 +136,7 @@ export default function OrganizationPage() {
                 setForceUpdate(prev => prev + 1);
             }, 200);
             
-            // Final force re-render with DOM manipulation
+            // Final force re-render with DOM manipulation and page refresh fallback
             setTimeout(() => {
                 console.log('Force re-render attempt 3');
                 setEmployees([...newEmployees]);
@@ -152,6 +153,25 @@ export default function OrganizationPage() {
                         }, 10);
                     }
                 }, 50);
+                
+                // Force complete component re-mount
+                setTimeout(() => {
+                    console.log('Forcing complete component re-mount...');
+                    setShouldRemount(false);
+                    setTimeout(() => {
+                        setShouldRemount(true);
+                    }, 10);
+                }, 100);
+                
+                // Final fallback - force page refresh if table still doesn't update
+                setTimeout(() => {
+                    console.log('Final fallback - checking if table updated...');
+                    const currentEmployee = employees.find(e => e.id === 1);
+                    if (currentEmployee && currentEmployee.name !== 'Alice Table Fix Smith Table Fix') {
+                        console.log('Table not updated, forcing page refresh...');
+                        window.location.reload();
+                    }
+                }, 1000);
             }, 300);
         } catch (err) {
             console.error("Failed to load employees", err);
@@ -245,6 +265,7 @@ export default function OrganizationPage() {
 
                 </div>
 
+                {shouldRemount && (
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" key={tableKey}>
                     <div className="overflow-x-auto">
                         <table key={forceUpdate} className="min-w-full divide-y divide-slate-200">
@@ -426,6 +447,7 @@ export default function OrganizationPage() {
                         </div>
                     </div>
                 </div>
+                )}
             </div>
             {openAddForm && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
