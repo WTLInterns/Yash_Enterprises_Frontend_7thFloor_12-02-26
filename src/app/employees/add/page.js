@@ -23,22 +23,23 @@ export default function AddEmployeePage({ onSuccess, isModal = false, editingEmp
     email: '',
     phone: '',
     employeeId: '',
-    employeeCode: '',
+    userId: '',
     roleId: '',
-    reportingManagerId: '',
     teamId: '',
     departmentId: '',
     designationId: '',
-    status: 'active',
+    customDesignation: '',
+    reportingManagerId: '',
+    organizationId: 1, // Default organization
+    shiftId: '',
     attendanceAllowed: true,
     hiredAt: '',
-    organizationId: 1, // Default organization
+    dateOfBirth: '',
+    gender: '',
+    status: 'ACTIVE',
     profileImage: null, // For image upload
     profileImageBase64: '', // For frontend display
     // Additional professional fields
-    dateOfBirth: '',
-    gender: '',
-    bloodGroup: '',
     emergencyContact: '',
     emergencyPhone: '',
     address: '',
@@ -50,14 +51,24 @@ export default function AddEmployeePage({ onSuccess, isModal = false, editingEmp
     personalEmail: '',
     skills: '',
     experience: '',
-    education: '',
     certifications: '',
+    education: '',
     notes: '',
+    leavePolicy: '',
+    holidayPlan: '',
+    baseSite: '',
+    sitePool: '',
+    attendanceRestriction: '',
+    inOutNotification: '',
+    workRestriction: '',
+    defaultTransport: '',
     // Custom fields for "Other" options
-    customDesignation: '',
     customTeam: '',
     customDepartment: ''
   });
+
+  const [nextEmployeeId, setNextEmployeeId] = useState('');
+  const [employeeIdError, setEmployeeIdError] = useState('');
 
   const [formErrors, setFormErrors] = useState({});
   const [step, setStep] = useState(1);
@@ -72,12 +83,13 @@ export default function AddEmployeePage({ onSuccess, isModal = false, editingEmp
       setLoading(true);
       
       // Fetch all dropdown data in parallel with error handling
-      const [rolesData, employeesData, teamsData, departmentsData, designationsData] = await Promise.allSettled([
+      const [rolesData, employeesData, teamsData, departmentsData, designationsData, nextIdData] = await Promise.allSettled([
         backendApi.get('/roles'),
         backendApi.get('/employees'),
         backendApi.get('/teams'),
         backendApi.get('/departments').catch(() => []), // Handle missing departments endpoint
-        backendApi.get('/designations')
+        backendApi.get('/designations'),
+        backendApi.get('/employees/next-employee-id')
       ]);
 
       setRoles(rolesData.status === 'fulfilled' ? rolesData.value : []);
@@ -90,11 +102,70 @@ export default function AddEmployeePage({ onSuccess, isModal = false, editingEmp
       setDepartments(departmentsData.status === 'fulfilled' ? departmentsData.value : []);
       setDesignations(designationsData.status === 'fulfilled' ? designationsData.value : []);
       
+      // Set next employee ID
+      if (nextIdData.status === 'fulfilled') {
+        setNextEmployeeId(nextIdData.value.nextEmployeeId || '');
+      }
+      
     } catch (err) {
       setError('Failed to load dropdown data');
       console.error('Error fetching dropdown data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const checkEmployeeId = async (employeeId) => {
+    if (!employeeId.trim()) {
+      setEmployeeIdError('');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/employees/check-employee-id/${employeeId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkB5YXNoZW50ZXJwcmlzZXMuY29tIiwiaWF0IjoxNzM1ODk2NzQ0LCJleHAiOjE3MzU5ODAzNDR9.test'}`
+        }
+      });
+      
+      const data = await response.json();
+      if (data.exists) {
+        setEmployeeIdError('Employee ID already exists');
+      } else {
+        setEmployeeIdError('');
+      }
+    } catch (error) {
+      console.error('Error checking employee ID:', error);
+    }
+  };
+  
+  const handleEmployeeIdChange = (e) => {
+    const value = e.target.value;
+    setFormData(prev => ({ ...prev, employeeId: value }));
+    
+    // Check if employee ID already exists
+    if (value.trim()) {
+      checkEmployeeId(value);
+    } else {
+      setEmployeeIdError('');
+    }
+  };
+  
+  const handleGenerateEmployeeId = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/employees/next-employee-id', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkB5YXNoZW50ZXJwcmlzZXMuY29tIiwiaWF0IjoxNzM1ODk2NzQ0LCJleHAiOjE3MzU5ODAzNDR9.test'}`
+        }
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setFormData(prev => ({ ...prev, employeeId: data.nextEmployeeId }));
+        setEmployeeIdError('');
+      }
+    } catch (error) {
+      console.error('Error generating employee ID:', error);
     }
   };
 
@@ -333,20 +404,27 @@ export default function AddEmployeePage({ onSuccess, isModal = false, editingEmp
       setError('');
       
       const payload = {
-        ...formData,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        employeeId: formData.employeeId,
+        userId: formData.userId,
         roleId: formData.roleId ? parseInt(formData.roleId) : null,
-        reportingManagerId: formData.reportingManagerId ? parseInt(formData.reportingManagerId) : null,
         teamId: formData.teamId === 'other' ? null : (formData.teamId ? parseInt(formData.teamId) : null),
         departmentId: formData.departmentId ? parseInt(formData.departmentId) : null,
         designationId: formData.designationId === 'other' ? null : (formData.designationId ? parseInt(formData.designationId) : null),
         organizationId: formData.organizationId ? parseInt(formData.organizationId) : 1,
         hiredAt: formData.hiredAt ? new Date(formData.hiredAt).toISOString().split('T')[0] : null,
         dateOfBirth: formData.dateOfBirth ? new Date(formData.dateOfBirth).toISOString().split('T')[0] : null,
-        // Fix status to use uppercase enum value
+        gender: formData.gender,
         status: formData.status ? formData.status.toUpperCase() : 'ACTIVE',
+        attendanceAllowed: formData.attendanceAllowed,
         // Include custom values
         customTeam: formData.teamId === 'other' ? formData.customTeam : null,
-        customDesignation: formData.designationId === 'other' ? formData.customDesignation : null
+        customDesignation: formData.designationId === 'other' ? formData.customDesignation : null,
+        // Include profile image if available
+        profileImageBase64: formData.profileImageBase64 || null
       };
       
       console.log('Sending payload:', payload);

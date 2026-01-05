@@ -52,6 +52,37 @@ export default function OrganizationPage() {
         }
     };
 
+    // Handle export functionality
+    const handleExport = async () => {
+        try {
+            console.log('Exporting employees...');
+            const response = await fetch('http://localhost:8080/api/employees/export/excel', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkB5YXNoZW50ZXJwcmlzZXMuY29tIiwiaWF0IjoxNzM1ODk2NzQ0LCJleHAiOjE3MzU5ODAzNDR9.test'}`
+                }
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'employees.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                console.log('Export completed successfully');
+            } else {
+                console.error('Export failed');
+            }
+        } catch (error) {
+            console.error('Error exporting employees:', error);
+        }
+    };
+
     // Handle employee edit
     const handleEditEmployee = (employee) => {
         setEditingEmployee(employee.originalData || employee);
@@ -77,7 +108,9 @@ export default function OrganizationPage() {
             const data = await backendApi.get("/employees");
             console.log('Received employee data:', data?.length, 'employees');
             console.log('Raw API data sample:', data?.[0]); // Debug first employee
+            console.log('Full first employee object:', JSON.stringify(data?.[0], null, 2)); // Full object debug
             const mapped = (data || []).map((e) => {
+                console.log('Mapping employee:', e.id, 'roleName:', e.roleName, 'teamName:', e.teamName, 'designationName:', e.designationName);
                 const name = e.firstName
                     ? `${e.firstName} ${e.lastName || ""}`.trim()
                     : e.employeeId || e.userId || "-";
@@ -88,10 +121,13 @@ export default function OrganizationPage() {
                     userId: e.userId,
                     employeeId: e.employeeId,
                     phone: e.phone,
+                    dateOfBirth: e.dateOfBirth || "-",
+                    gender: e.gender || "-",
+                    profileImageUrl: e.profileImageUrl || null,
                     joiningDate: e.hiredAt,
                     reportingManager: e.reportingManagerName || "-",
                     team: e.teamName || "-",
-                    designation: e.designationName || "-",
+                    designation: e.customDesignation || e.designationName || "-",
                     role: e.roleName || "-",
                     status: e.status || "-",
                     leavePolicy: e.leavePolicy || "-",
@@ -233,7 +269,7 @@ export default function OrganizationPage() {
                                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                             />
                         </div>
-                        <button className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        <button onClick={handleExport} className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                 <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                             </svg>
@@ -241,7 +277,7 @@ export default function OrganizationPage() {
                         </button>
                         <button className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                                <path fillRule="evenodd" d="M6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
                             </svg>
                             <span>Import</span>
                         </button>
@@ -278,6 +314,9 @@ export default function OrganizationPage() {
                                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">User ID</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Employee ID</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Phone</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Birth Date</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Gender</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Photo</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Joining Date</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Reporting Manager</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Team</th>
@@ -307,20 +346,22 @@ export default function OrganizationPage() {
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4">
                                             <div className="flex items-center">
-                                                <div className="h-10 w-10 flex-shrink-0">
-                                                    {employee.profileImageUrl ? (
-                                                        <img
-                                                            src={`http://localhost:8080${employee.profileImageUrl}`}
-                                                            alt={employee.name}
-                                                            className="w-10 h-10 rounded-full object-cover border-2 border-gray-300"
-                                                        />
-                                                    ) : (
-                                                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-sm font-medium text-indigo-700">
-                                                            {employee.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="ml-4">
+                                                {employee.profileImageUrl ? (
+                                                    <img
+                                                        src={`http://localhost:8080${employee.profileImageUrl}`}
+                                                        alt={employee.name}
+                                                        className="w-10 h-10 rounded-full object-cover border-2 border-gray-300 mr-4"
+                                                        onError={(e) => {
+                                                            e.target.onerror = null;
+                                                            e.target.src = `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+Pjwvc3ZnPg==`;
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-sm font-medium text-indigo-700 mr-4">
+                                                        {employee.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                                    </div>
+                                                )}
+                                                <div>
                                                     <div className="text-sm font-medium text-slate-900">{employee.name}</div>
                                                 </div>
                                             </div>
@@ -333,6 +374,29 @@ export default function OrganizationPage() {
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
                                             {employee.phone}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.dateOfBirth !== "-" ? new Date(employee.dateOfBirth).toLocaleDateString() : "-"}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.gender}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.profileImageUrl ? (
+                                                <img
+                                                    src={`http://localhost:8080${employee.profileImageUrl}`}
+                                                    alt={employee.name}
+                                                    className="w-8 h-8 rounded-full object-cover border border-gray-300"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+Pjwvc3ZnPg==`;
+                                                    }}
+                                                />
+                                            ) : (
+                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                                                    {employee.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
                                             {new Date(employee.joiningDate).toLocaleDateString()}
