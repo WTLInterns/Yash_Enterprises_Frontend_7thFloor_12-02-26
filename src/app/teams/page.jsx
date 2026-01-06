@@ -5,6 +5,8 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Pencil, Trash2, Plus, Search, Users, UserPlus, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { backendApi } from '@/services/api';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 export default function TeamsPage() {
   const router = useRouter();
@@ -23,6 +25,16 @@ export default function TeamsPage() {
         setTeams(data || []);
       } catch (err) {
         console.error('Failed to load teams', err);
+        toast.error('Failed to load teams. Please try again.', {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          progress: undefined,
+          theme: "light",
+        });
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -42,11 +54,37 @@ export default function TeamsPage() {
   );
 
   const handleDelete = async (id) => {
+    if (!confirm('Are you sure you want to delete this team?')) {
+      return;
+    }
+    
     try {
       await backendApi.delete(`/teams/${id}`);
       setTeams((prev) => prev.filter((t) => t.id !== id));
+      toast.success('Team deleted successfully!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        progress: undefined,
+        theme: "light",
+      });
     } catch (err) {
       console.error('Failed to delete team', err);
+      // Show user-friendly error message from backend
+      const errorMessage = err.data?.message || err.message || 'Failed to delete team';
+      toast.error(errorMessage, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        progress: undefined,
+        theme: "light",
+      });
     }
   };
 
@@ -242,6 +280,18 @@ export default function TeamsPage() {
           </div>
         </div>
       </div>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
     </DashboardLayout>
   );
 }

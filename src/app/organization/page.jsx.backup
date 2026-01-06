@@ -1,0 +1,865 @@
+"use client";
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import AddEmployeePage from "../employees/add/page";
+import { useEffect, useState } from "react";
+import { backendApi } from "@/services/api";
+import { useRouter } from "next/navigation";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+// Modal wrapper component
+function AddEmployeeModal({ onClose, editingEmployee }) {
+    const router = useRouter();
+    
+    const handleSuccess = () => {
+        onClose();
+        // The onClose will trigger handleCloseForm which calls loadEmployees()
+        // No need for page reload, just refresh the data
+    };
+    
+    return (
+        <div>
+            <AddEmployeePage 
+                onSuccess={handleSuccess}
+                isModal={true}
+                editingEmployee={editingEmployee}
+            />
+        </div>
+    );
+}
+
+export default function OrganizationPage() {
+    const [employees, setEmployees] = useState([]);
+    const [filteredEmployees, setFilteredEmployees] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterTeam, setFilterTeam] = useState('all');
+    const [filterRole, setFilterRole] = useState('all');
+    const [filterDesignation, setFilterDesignation] = useState('all');
+    const [filterGender, setFilterGender] = useState('all');
+    const [showFilters, setShowFilters] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [openAddForm, setOpenAddForm] = useState(false);
+    const [editingEmployee, setEditingEmployee] = useState(null);
+    const [forceUpdate, setForceUpdate] = useState(0);
+    const [shouldRemount, setShouldRemount] = useState(true);
+    const [tableKey, setTableKey] = useState(0);
+
+    // Handle employee deletion
+    const handleDeleteEmployee = async (employeeId) => {
+        if (!confirm('Are you sure you want to delete this employee?')) {
+            return;
+        }
+
+        try {
+            const response = await backendApi.delete(`/employees/${employeeId}`);
+            
+            // Refresh the employee list
+            const updatedEmployees = employees.filter(emp => emp.id !== employeeId);
+            setEmployees(updatedEmployees);
+            toast.success('Employee deleted successfully!', {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+                progress: undefined,
+                theme: "light",
+            });
+        } catch (error) {
+            console.error('Error deleting employee:', error);
+            toast.error('Failed to delete employee', {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+                progress: undefined,
+                theme: "light",
+            });
+        }
+    };
+
+    // Handle export functionality
+    const handleExport = async () => {
+        try {
+            console.log('Exporting employees...');
+            const response = await fetch('http://localhost:8080/api/employees/export/excel', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkB5YXNoZW50ZXJwcmlzZXMuY29tIiwiaWF0IjoxNzM1ODk2NzQ0LCJleHAiOjE3MzU5ODAzNDR9.test'}`
+                }
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'employees.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                console.log('Export completed successfully');
+            } else {
+                console.error('Export failed');
+            }
+        } catch (error) {
+            console.error('Error exporting employees:', error);
+        }
+    };
+
+    // Handle import functionality
+    const handleImport = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Check if it's an Excel file
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            toast.error('Please select an Excel file (.xlsx or .xls)', {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+                progress: undefined,
+                theme: "light",
+            });
+            return;
+        }
+
+        try {
+            console.log('Importing employees from:', file.name);
+            
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('http://localhost:8080/api/employees/import/excel', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkB5YXNoZW50ZXJwcmlzZXMuY29tIiwiaWF0IjoxNzM1ODk2NzQ0LCJleHAiOjE3MzU5ODAzNDR9.test'}`
+                },
+                body: formData
+            });
+
+            const result = await response.json();
+            
+            if (response.ok) {
+                console.log('Import result:', result);
+                toast.success(`Import completed! Success: ${result.successCount}, Errors: ${result.errorCount}`, {
+                    position: "top-right",
+                    autoClose: 5000,
+                    hideProgressBar: false,
+                    closeOnClick: true,
+                    pauseOnHover: true,
+                    draggable: true,
+                    progress: undefined,
+                    theme: "light",
+                });
+                
+                // Refresh employee list to show imported data
+                loadEmployees();
+            } else {
+                console.error('Import failed:', result);
+                toast.error(`Import failed: ${result.message}`, {
+                    position: "top-right",
+                    autoClose: 5000,
+                    hideProgressBar: false,
+                    closeOnClick: true,
+                    pauseOnHover: true,
+                    draggable: true,
+                    progress: undefined,
+                    theme: "light",
+                });
+            }
+        } catch (error) {
+            console.error('Error importing employees:', error);
+            toast.error('Error importing employees. Please try again.', {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+                progress: undefined,
+                theme: "light",
+            });
+        }
+
+        // Reset file input
+        event.target.value = '';
+    };
+
+    // Handle employee edit
+    const handleEditEmployee = (employee) => {
+        setEditingEmployee(employee.originalData || employee);
+        setOpenAddForm(true);
+    };
+
+    // Handle form close
+    const handleCloseForm = () => {
+        console.log('handleCloseForm called - refreshing employee list');
+        setOpenAddForm(false);
+        setEditingEmployee(null);
+        // Refresh the employee list with a longer delay to ensure backend update is processed
+        setTimeout(() => {
+            console.log('Refreshing employee list after update');
+            loadEmployees();
+        }, 1000); // Increased from 500ms to 1000ms
+    };
+
+    // Filter employees based on search and filters
+    const filterEmployees = () => {
+        let filtered = employees;
+
+        // Search filter
+        if (searchTerm) {
+            filtered = filtered.filter(emp => 
+                emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                emp.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                emp.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                emp.phone?.includes(searchTerm) ||
+                emp.team.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                emp.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                emp.designation.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+
+        // Status filter
+        if (filterStatus !== 'all') {
+            filtered = filtered.filter(emp => emp.status.toLowerCase() === filterStatus.toLowerCase());
+        }
+
+        // Team filter
+        if (filterTeam !== 'all') {
+            filtered = filtered.filter(emp => emp.team.toLowerCase() === filterTeam.toLowerCase());
+        }
+
+        // Role filter
+        if (filterRole !== 'all') {
+            filtered = filtered.filter(emp => emp.role.toLowerCase() === filterRole.toLowerCase());
+        }
+
+        // Designation filter
+        if (filterDesignation !== 'all') {
+            filtered = filtered.filter(emp => emp.designation.toLowerCase() === filterDesignation.toLowerCase());
+        }
+
+        // Gender filter
+        if (filterGender !== 'all') {
+            filtered = filtered.filter(emp => emp.gender.toLowerCase() === filterGender.toLowerCase());
+        }
+
+        setFilteredEmployees(filtered);
+    };
+
+    // Update filtered employees when data or filters change
+    useEffect(() => {
+        filterEmployees();
+    }, [employees, searchTerm, filterStatus, filterTeam, filterRole, filterDesignation, filterGender]);
+
+    // Get unique values for filters
+    const uniqueTeams = [...new Set(employees.map(emp => emp.team).filter(team => team !== "-"))];
+    const uniqueRoles = [...new Set(employees.map(emp => emp.role).filter(role => role !== "-"))];
+    const uniqueStatuses = [...new Set(employees.map(emp => emp.status).filter(status => status !== "-"))];
+    const uniqueDesignations = [...new Set(employees.map(emp => emp.designation).filter(designation => designation !== "-"))];
+    const uniqueGenders = [...new Set(employees.map(emp => emp.gender).filter(gender => gender !== "-"))];
+
+    // Clear all filters
+    const clearFilters = () => {
+        setSearchTerm('');
+        setFilterStatus('all');
+        setFilterTeam('all');
+        setFilterRole('all');
+        setFilterDesignation('all');
+        setFilterGender('all');
+    };
+
+    // Get active filters count
+    const getActiveFiltersCount = () => {
+        let count = 0;
+        if (searchTerm) count++;
+        if (filterStatus !== 'all') count++;
+        if (filterTeam !== 'all') count++;
+        if (filterRole !== 'all') count++;
+        if (filterDesignation !== 'all') count++;
+        if (filterGender !== 'all') count++;
+        return count;
+    };
+    const loadEmployees = async () => {
+        try {
+            console.log('Loading employees from API...');
+            const data = await backendApi.get("/employees");
+            console.log('Received employee data:', data?.length, 'employees');
+            console.log('Raw API data sample:', data?.[0]); // Debug first employee
+            console.log('Full first employee object:', JSON.stringify(data?.[0], null, 2)); // Full object debug
+            const mapped = (data || []).map((e) => {
+                console.log('Mapping employee:', e.id, 'roleName:', e.roleName, 'teamName:', e.teamName, 'designationName:', e.designationName);
+                const name = e.firstName
+                    ? `${e.firstName} ${e.lastName || ""}`.trim()
+                    : e.employeeId || e.userId || "-";
+
+                return {
+                    id: e.id,
+                    name,
+                    userId: e.userId,
+                    employeeId: e.employeeId,
+                    phone: e.phone,
+                    dateOfBirth: e.dateOfBirth || "-",
+                    gender: e.gender || "-",
+                    profileImageUrl: e.profileImageUrl || null,
+                    joiningDate: e.hiredAt,
+                    reportingManager: e.reportingManagerName || "-",
+                    team: e.teamName || "-",
+                    designation: e.customDesignation || e.designationName || "-",
+                    role: e.roleName || "-",
+                    status: e.status || "-",
+                    leavePolicy: e.leavePolicy || "-",
+                    holidayPlan: e.holidayPlan || "-",
+                    baseSite: e.baseSite || "-",
+                    sitePool: e.sitePool || "-",
+                    city: e.city || "-",
+                    attendanceRestriction: e.attendanceRestriction || "-",
+                    inOutNotification: e.inOutNotification || "-",
+                    workRestriction: e.workRestriction || "-",
+                    defaultTransport: e.defaultTransport || "-",
+                    profileImageUrl: e.profileImageUrl || null,
+                    // Keep original data for editing
+                    originalData: e
+                };
+            });
+
+            console.log('Setting employees state with', mapped.length, 'employees');
+            console.log('Mapped data sample:', mapped[0]); // Debug first mapped employee
+            console.log('Employee 1 mapped data:', mapped.find(e => e.id === 1)); // Debug employee 1 specifically
+            
+            // Force React to detect state change by creating a new array reference
+            const newEmployees = [...mapped];
+            console.log('About to set employees state with new data:', newEmployees[0]);
+            setEmployees(newEmployees);
+            
+            // Force re-render by updating a dummy state
+            setForceUpdate(prev => prev + 1);
+            
+            // Additional force re-render using setTimeout
+            setTimeout(() => {
+                console.log('Force re-render attempt 1');
+                setEmployees([...newEmployees]);
+                setForceUpdate(prev => prev + 1);
+            }, 100);
+            
+            // Force complete re-render with key change
+            setTimeout(() => {
+                console.log('Force re-render attempt 2 with key change');
+                const employeesWithKeys = newEmployees.map(emp => ({...emp, key: `${emp.id}-${Date.now()}`}));
+                setEmployees(employeesWithKeys);
+                setForceUpdate(prev => prev + 1);
+            }, 200);
+            
+            // Final force re-render with DOM manipulation and page refresh fallback
+            setTimeout(() => {
+                console.log('Force re-render attempt 3');
+                setEmployees([...newEmployees]);
+                setForceUpdate(prev => prev + 1);
+                setTableKey(prev => prev + 1); // Force complete table re-render
+                
+                // Force DOM update by manipulating the table directly
+                setTimeout(() => {
+                    const table = document.querySelector('table');
+                    if (table) {
+                        table.style.display = 'none';
+                        setTimeout(() => {
+                            table.style.display = '';
+                        }, 10);
+                    }
+                }, 50);
+                
+                // Force complete component re-mount
+                setTimeout(() => {
+                    console.log('Forcing complete component re-mount...');
+                    setShouldRemount(false);
+                    setTimeout(() => {
+                        setShouldRemount(true);
+                    }, 10);
+                }, 100);
+                
+                // Final fallback - force page refresh if table still doesn't update
+                setTimeout(() => {
+                    console.log('Final fallback - checking if table updated...');
+                    const currentEmployee = employees.find(e => e.id === 1);
+                    if (currentEmployee && currentEmployee.name !== 'Alice Table Fix Smith Table Fix') {
+                        console.log('Table not updated, forcing page refresh...');
+                        window.location.reload();
+                    }
+                }, 1000);
+            }, 300);
+        } catch (err) {
+            console.error("Failed to load employees", err);
+        }
+    };
+
+    useEffect(() => {
+        let isMounted = true;
+        loadEmployees();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    // Monitor employees state changes and force re-render
+    useEffect(() => {
+        console.log('Employees state changed:', employees.length, 'employees');
+        console.log('Force update count:', forceUpdate);
+        if (employees.length > 0) {
+            console.log('Current employee 1 in state:', employees.find(e => e.id === 1));
+        }
+    }, [employees, forceUpdate]);
+
+    return (
+        <DashboardLayout
+            header={{
+                project: "Organization Management",
+                user: {
+                    name: "Admin User",
+                    role: "Administrator"
+                },
+                notifications: [],
+                tabs: [
+                    { key: "employees", label: "Employees", href: "/organization" }
+                ]
+            }}
+        >
+            <>
+            <div className="flex flex-col space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <div className="text-lg font-semibold text-slate-900">Employee</div>
+                    </div>
+                    ...
+                    <div className="flex items-center space-x-3">
+                        <div className="relative flex-1 max-w-md">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search by name, ID, email, phone, team, role, designation..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            />
+                        </div>
+                        
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className="relative flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.01a3.001 3.001 0 010 5.98V16a1 1 0 11-2 0v-1.01a3.001 3.001 0 010-5.98V4a1 1 0 011-1z" />
+                            </svg>
+                            <span>Filters</span>
+                            {getActiveFiltersCount() > 0 && (
+                                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center">
+                                    {getActiveFiltersCount()}
+                                </span>
+                            )}
+                        </button>
+                        
+                        {getActiveFiltersCount() > 0 && (
+                            <button
+                                onClick={clearFilters}
+                                className="flex items-center space-x-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                                <span>Clear</span>
+                            </button>
+                        )}
+                        
+                        <button onClick={handleExport} className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                            <span>Export</span>
+                        </button>
+                        <button className="relative flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span>Import</span>
+                            <input
+                                type="file"
+                                accept=".xlsx,.xls"
+                                onChange={handleImport}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                title="Import Excel file"
+                            />
+                        </button>
+                        <button
+                            onClick={() => setOpenAddForm(true)}
+                            className="flex items-center space-x-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                            </svg>
+                            <span>Add Employee</span>
+                        </button>
+
+                    </div>
+
+                </div>
+
+                {/* Filter Panel */}
+                {showFilters && (
+                    <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                                <select
+                                    value={filterStatus}
+                                    onChange={(e) => setFilterStatus(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="all">All Status</option>
+                                    {uniqueStatuses.map(status => (
+                                        <option key={status} value={status}>{status}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Team</label>
+                                <select
+                                    value={filterTeam}
+                                    onChange={(e) => setFilterTeam(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="all">All Teams</option>
+                                    {uniqueTeams.map(team => (
+                                        <option key={team} value={team}>{team}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                                <select
+                                    value={filterRole}
+                                    onChange={(e) => setFilterRole(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="all">All Roles</option>
+                                    {uniqueRoles.map(role => (
+                                        <option key={role} value={role}>{role}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
+                                <select
+                                    value={filterDesignation}
+                                    onChange={(e) => setFilterDesignation(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="all">All Designations</option>
+                                    {uniqueDesignations.map(designation => (
+                                        <option key={designation} value={designation}>{designation}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                                <select
+                                    value={filterGender}
+                                    onChange={(e) => setFilterGender(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="all">All Genders</option>
+                                    {uniqueGenders.map(gender => (
+                                        <option key={gender} value={gender}>{gender}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="flex items-end">
+                                <button
+                                    onClick={clearFilters}
+                                    className="w-full flex items-center justify-center space-x-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                    <span>Clear All</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Results Summary */}
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                    <span>Showing {filteredEmployees.length} of {employees.length} employees</span>
+                    {getActiveFiltersCount() > 0 && (
+                        <span className="text-indigo-600 font-medium">
+                            {getActiveFiltersCount()} filter{getActiveFiltersCount() > 1 ? 's' : ''} applied
+                        </span>
+                    )}
+                </div>
+
+                {shouldRemount && (
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" key={tableKey}>
+                    <div className="overflow-x-auto">
+                        <table key={forceUpdate} className="min-w-full divide-y divide-slate-200">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+                                        <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Employee</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">User ID</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Employee ID</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Phone</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Birth Date</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Gender</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Photo</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Joining Date</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Reporting Manager</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Team</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Role</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Designation</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Leave Policy</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Holiday Plan</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Base Site</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Site Pool</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">City</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Attendance Restriction</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">In/Out Notification</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Work Restriction</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Default Transport</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Active</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 bg-white">
+                                {filteredEmployees.map((employee) => (
+                                    <tr key={employee.key || employee.id} className="hover:bg-slate-50">
+                                        <td className="whitespace-nowrap px-6 py-4">
+                                            <input
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4">
+                                            <div className="flex items-center">
+                                                {employee.profileImageUrl ? (
+                                                    <img
+                                                        src={`http://localhost:8080${employee.profileImageUrl}`}
+                                                        alt={employee.name}
+                                                        className="w-10 h-10 rounded-full object-cover border-2 border-gray-300 mr-4"
+                                                        onError={(e) => {
+                                                            e.target.onerror = null;
+                                                            e.target.src = `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+Pjwvc3ZnPg==`;
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-sm font-medium text-indigo-700 mr-4">
+                                                        {employee.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <div className="text-sm font-medium text-slate-900">{employee.name}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.userId}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.employeeId}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.phone}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.dateOfBirth !== "-" ? new Date(employee.dateOfBirth).toLocaleDateString() : "-"}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.gender}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.profileImageUrl ? (
+                                                <img
+                                                    src={`http://localhost:8080${employee.profileImageUrl}`}
+                                                    alt={employee.name}
+                                                    className="w-8 h-8 rounded-full object-cover border border-gray-300"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+Pjwvc3ZnPg==`;
+                                                    }}
+                                                />
+                                            ) : (
+                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                                                    {employee.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {new Date(employee.joiningDate).toLocaleDateString()}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.reportingManager}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4">
+                                            <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                                                {employee.team}
+                                            </span>
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.role}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.designation}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.leavePolicy}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.holidayPlan}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.baseSite}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.sitePool}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.city}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.attendanceRestriction}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.inOutNotification}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.workRestriction}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            {employee.defaultTransport}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4">
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" value="" className="sr-only peer" defaultChecked={employee.status === "Active"} />
+                                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                                <span className="ml-3 text-sm font-medium text-slate-500">
+                                                    {employee.status}
+                                                </span>
+                                            </label>
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                                            <div className="flex items-center space-x-3">
+                                                <button
+                                                    onClick={() => handleEditEmployee(employee)}
+                                                    className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-50"
+                                                    title="Edit"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.793.793-.793zM11.379 5.793L3 14.172V17h2.828L8.38-8.379-2.83-2.828z" />
+                                                    </svg>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteEmployee(employee.id)}
+                                                    className="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50"
+                                                    title="Delete"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-4">
+                        <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-2">
+                                <span className="text-sm text-slate-500">Rows per page:</span>
+                                <select
+                                    className="rounded-md border-slate-300 py-1 pl-2 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="10">10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <button
+                                disabled
+                                className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                                Previous
+                            </button>
+                            <button className="relative inline-flex items-center rounded-md border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
+                                1
+                            </button>
+                            <button
+                                className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-50"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {openAddForm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <div className="bg-white rounded-lg max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+                            <h2 className="text-xl font-semibold">{editingEmployee ? 'Edit Employee' : 'Add Employee'}</h2>
+                            <button 
+                                onClick={() => setOpenAddForm(false)}
+                                className="text-gray-500 hover:text-gray-700"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <AddEmployeeModal onClose={handleCloseForm} editingEmployee={editingEmployee} />
+                        </div>
+                    </div>
+                </div>
+            )}
+            </div>
+            <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick={true}
+                rtl={false}
+                pauseOnFocusLoss={true}
+                draggable={true}
+                pauseOnHover={true}
+                theme="light"
+            />
+            </>
+        </DashboardLayout>
+    );
+}

@@ -15,8 +15,21 @@ export function createApiClient({ baseUrl = "" } = {}) {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
+      const contentType = res.headers.get("content-type") || "";
+      let errorData;
+      
+      if (contentType.includes("application/json")) {
+        errorData = await res.json().catch(() => ({}));
+      } else {
+        const text = await res.text().catch(() => "");
+        errorData = { message: text || res.statusText };
+      }
+      
+      const errorMessage = errorData.message || `Request failed (${res.status})`;
+      const error = new Error(errorMessage);
+      error.status = res.status;
+      error.data = errorData;
+      throw error;
     }
 
     const contentType = res.headers.get("content-type") || "";
