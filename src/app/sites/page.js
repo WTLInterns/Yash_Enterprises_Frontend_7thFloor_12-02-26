@@ -457,7 +457,7 @@ export default function SitesPage() {
               </div>
 
               <div className="flex items-center gap-2 pl-1">
-                <button
+                {/* <button
                   type="button"
                   title="Filter"
                   aria-label="Filter"
@@ -469,7 +469,7 @@ export default function SitesPage() {
                   }
                 >
                   <FilterIcon className="h-4 w-4" />
-                </button>
+                </button> */}
 
                 <button
                   type="button"
@@ -483,8 +483,8 @@ export default function SitesPage() {
 
                 <button
                   type="button"
-                  title="Export to CSV"
-                  aria-label="Export to CSV"
+                  title="Export to Excel"
+                  aria-label="Export to Excel"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-50/80 hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                   onClick={async () => {
                     try {
