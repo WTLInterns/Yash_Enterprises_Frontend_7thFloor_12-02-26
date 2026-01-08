@@ -6,25 +6,39 @@ import { ToastContainer, toast } from 'react-toastify';
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 
-// Navigation items
-const navigationItems = [
-  { key: "dashboard", label: "Dashboard", href: "/", icon: "dashboard" },
-  { key: "customers", label: "Customers", href: "/customers", icon: "org" },
-  { key: "attendance", label: "Attendance", href: "/attendance", icon: "attendance" },
-  { key: "leaves", label: "Leaves", href: "/leaves", icon: "leaves" },
-  { key: "organization", label: "Organization", href: "/organization", icon: "org" },
-  { key: "tasks", label: "Tasks", href: "/tasks", icon: "tasks" },
-  { key: "form", label: "Form", href: "/form", icon: "form" },
-  { key: "order", label: "Order", href: "/order", icon: "order" },
-  { key: "expenses", label: "Expenses", href: "/expenses", icon: "expenses" },
-  { key: "sites", label: "Sites", href: "/sites", icon: "client" },
-  { key: "reports", label: "Reports", href: "/reports", icon: "reports" },
-  { key: "support", label: "Support", href: "/support", icon: "support" },
-  { key: "setting", label: "Setting", href: "/settings", icon: "settings" },
+// Grouped navigation for sidebar
+const sidebarSections = [
+  {
+    key: "zoho",
+    label: "Zoho",
+    items: [
+      { key: "zoho-dashboard", label: "Dashboard", href: "/", icon: "dashboard", accent: "indigo" },
+      { key: "zoho-customers", label: "Customers", href: "/customers", icon: "client", accent: "emerald" },
+      { key: "zoho-bank", label: "Bank", href: "/bank", icon: "bank", accent: "amber" },
+      { key: "zoho-products", label: "Products", href: "/products", icon: "products", accent: "violet" },
+    ],
+  },
+  {
+    key: "unolo",
+    label: "Unolo",
+    items: [
+      { key: "unolo-dashboard", label: "Dashboard", href: "/dashboard", icon: "dashboard", accent: "indigo" },
+      { key: "unolo-attendance", label: "Attendance", href: "/attendance", icon: "attendance", accent: "cyan" },
+      { key: "unolo-leave", label: "Leave", href: "/leaves", icon: "leaves", accent: "rose" },
+      { key: "unolo-organization", label: "Organization", href: "/organization", icon: "org", accent: "slate" },
+      { key: "unolo-form", label: "Form", href: "/form", icon: "form", accent: "teal" },
+      { key: "unolo-order", label: "Order", href: "/order", icon: "order", accent: "orange" },
+      { key: "unolo-client", label: "Client", href: "/clients", icon: "client", accent: "blue-gray" },
+      { key: "unolo-sites", label: "Sites", href: "/sites", icon: "sites", accent: "lime" },
+    ],
+  },
 ];
 
+// Flattened list for active key detection (kept for backward compatibility)
+const navigationItems = sidebarSections.flatMap((section) => section.items);
+
 export default function DashboardLayout({ header, children }) {
-    const pathname = usePathname();
+  const pathname = usePathname();
   const router = useRouter();
 
   // Simple auth guard: redirect to /login if not logged in
@@ -53,7 +67,7 @@ export default function DashboardLayout({ header, children }) {
     router.push('/login');
   };
 
-   // Sidebar active item
+  // Sidebar active item
   const getActiveKey = () => {
     const item = navigationItems.find(item =>
       item.href === '/'
@@ -63,7 +77,7 @@ export default function DashboardLayout({ header, children }) {
     return item?.key || "dashboard";
   };
 
-   // Auto-detect active tab
+  // Auto-detect active tab
   const getActiveTabKey = () => {
     if (!header?.tabs) return null;
 
@@ -80,15 +94,14 @@ export default function DashboardLayout({ header, children }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="flex">
-        <Sidebar 
-          items={navigationItems} 
-          activeKey={getActiveKey()} 
-          brand="YAS" 
+        <Sidebar
+          sections={sidebarSections}
+          activeKey={getActiveKey()}
+          brand="Yash"
           onLogout={handleLogout}
         />
 
-
-          <div className="flex min-w-0 flex-1 flex-col lg:ml-72">
+        <div className="flex min-w-0 flex-1 flex-col lg:ml-72">
           {/* TOPBAR */}
           <Topbar
             project={header?.project}

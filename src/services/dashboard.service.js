@@ -67,7 +67,7 @@ export async function getDashboardOverview() {
   };
 
   const navigation = {
-    brand: "YAS",
+    brand: "Yash Enterprises",
     activeKey: "dashboard",
     items: [
       { key: "dashboard", label: "Dashboard", icon: "dashboard", href: "/" },

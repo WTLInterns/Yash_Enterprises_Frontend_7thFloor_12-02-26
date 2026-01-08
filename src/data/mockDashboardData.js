@@ -4,7 +4,7 @@ export const mockDashboardData = {
     environment: "Elite",
   },
   navigation: {
-    brand: "YAS",
+    brand: "Yash Enterprises",
     activeKey: "dashboard",
     items: [
       { key: "dashboard", label: "Dashboard", icon: "dashboard", href: "#" },
