@@ -473,10 +473,11 @@ export default function CustomersPage() {
               onClick={() => setShowCreateDrawer(false)}
             />
 
-            <div className="fixed inset-0 z-[70] flex justify-end">
-              <div className="relative w-full max-w-2xl h-full bg-white shadow-2xl transform transition-transform duration-300 ease-in-out">
-                {/* HEADER */}
-                <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+            <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 py-6">
+              <div className="relative w-full max-w-3xl h-[85vh] rounded-2xl bg-white shadow-2xl flex flex-col overflow-hidden">
+                
+                {/* HEADER fixed */}
+                <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4 shrink-0">
                   <div>
                     <h2 className="text-lg font-semibold text-slate-900">
                       {selectedCustomer ? "Edit Customer" : "Create Customer"}
@@ -495,7 +496,7 @@ export default function CustomersPage() {
                   </button>
                 </div>
 
-                {/* BODY */}
+                {/* BODY scrollable */}
                 <div className="flex-1 overflow-y-auto px-6 py-4">
                   <div className="space-y-6">
                     {/* Customer Information */}
@@ -699,8 +700,8 @@ export default function CustomersPage() {
                   </div>
                 </div>
 
-                {/* FOOTER */}
-                <div className="border-t border-slate-200 px-6 py-4">
+                {/* FOOTER fixed */}
+                <div className="border-t border-slate-200 px-6 py-4 shrink-0">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-slate-500">
                       <span className="text-rose-500">*</span> Required fields
