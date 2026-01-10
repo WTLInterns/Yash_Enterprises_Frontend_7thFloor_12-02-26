@@ -37,7 +37,7 @@ export async function getDashboardOverview() {
   let employees = [];
 
   try {
-    const rawEmployees = await backendApi.get("/test/employees");
+    const rawEmployees = await backendApi.get("/employees");
 
     employees = (rawEmployees || []).map((e) => {
       const name = e.firstName

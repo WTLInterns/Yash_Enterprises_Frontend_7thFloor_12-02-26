@@ -168,27 +168,56 @@ export default function BanksPage() {
       await fetchBanks();
     } catch (err) {
       console.error("Delete failed:", err);
+      const isNotFound = err?.status === 404 || err?.data?.status === 404;
+      
+      if (isNotFound) {
+        toast.error("Already deleted. Refreshing list...");
+        await fetchBanks();
+        return;
+      }
+      
       toast.error("Failed to delete bank");
     }
   };
 
-  const openEdit = (bank) => {
-    // Use bank data directly from table row (no detail API call)
-    setSelectedBank(bank);
-    setForm({
-      name: bank.bankName || bank.name || "",
-      branch: bank.branchName || bank.branch || "",
-      owner: bank.owner || "",
-      phone: bank.phone || "",
-      website: bank.website || "",
-      address: bank.address || "",
-      district: bank.district || "",
-      taluka: bank.taluka || "",
-      pinCode: bank.pinCode || "",
-      description: bank.description || "",
-    });
-    setCustomFields(bank.customFields || {});
-    setShowCreateModal(true);
+  const openEdit = async (bank) => {
+    try {
+      if (!bank?.id) {
+        toast.error("Invalid bank selected");
+        return;
+      }
+
+      // Always fetch latest bank from backend
+      const freshBank = await backendApi.get(`/banks/${bank.id}`);
+
+      setSelectedBank(freshBank);
+      setForm({
+        name: freshBank.bankName || "",
+        branch: freshBank.branchName || "",
+        owner: freshBank.owner || "",
+        phone: freshBank.phone || "",
+        website: freshBank.website || "",
+        address: freshBank.address || "",
+        district: freshBank.district || "",
+        taluka: freshBank.taluka || "",
+        pinCode: freshBank.pinCode || "",
+        description: freshBank.description || "",
+      });
+
+      setCustomFields(freshBank.customFields || {});
+      setShowCreateModal(true);
+    } catch (err) {
+      console.error("Failed to open edit:", err);
+
+      const isNotFound = err?.status === 404 || err?.data?.status === 404;
+      if (isNotFound) {
+        toast.error("Bank not found. Reloading list...");
+        await fetchBanks();
+        return;
+      }
+
+      toast.error("Failed to load bank details");
+    }
   };
 
   const openDetails = (bank) => {
