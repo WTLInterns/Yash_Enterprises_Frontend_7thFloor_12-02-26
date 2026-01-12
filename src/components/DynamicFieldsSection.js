@@ -140,18 +140,18 @@ export default function DynamicFieldsSection({ entity, entityId, values, onChang
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium text-slate-900">Custom Fields</h3>
+          {/* <h3 className="text-lg font-medium text-slate-900">Custom Fields</h3> */}
           {showConfigure && (
             <button
               onClick={() => setShowModal(true)}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
               <Settings className="h-4 w-4" />
-              Configure
+              Custom Fields
             </button>
           )}
         </div>
-        <div className="text-center py-6 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
+        {/* <div className="text-center py-6 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
           <p className="text-slate-500">No custom fields configured</p>
           {showConfigure && (
             <button
@@ -161,7 +161,7 @@ export default function DynamicFieldsSection({ entity, entityId, values, onChang
               Configure custom fields
             </button>
           )}
-        </div>
+        </div> */}
         
         <DynamicFieldsModal
           isOpen={showModal}

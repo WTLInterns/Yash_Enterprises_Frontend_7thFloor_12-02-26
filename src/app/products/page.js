@@ -440,32 +440,48 @@ export default function ProductsPage() {
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {filtered.map((product) => (
                     <tr key={product.id} className="hover:bg-slate-50">
+                      {/* Product Name */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                         {product.name}
                       </td>
 
+                      {/* SKU */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                         {product.code || product.sku || "-"}
                       </td>
 
+                      {/* Category */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                        {categories.find(c => c.id === product.categoryId)?.name || "-"}
+                        {product.categoryName ||
+                          categories.find((c) => c.id === product.categoryId)?.name ||
+                          "-"}
                       </td>
 
+                      {/* Price */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                         ₹{product.price ?? 0}
                       </td>
 
+                      {/* Created (matches header) */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                        {product.updatedAt 
+                        {product.createdAt
+                          ? new Date(product.createdAt).toLocaleDateString()
+                          : "-"}
+                      </td>
+
+                      {/* Updated (matches header) */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                        {product.updatedAt
                           ? new Date(product.updatedAt).toLocaleDateString()
                           : "-"}
                       </td>
 
+                      {/* Owner (logged-in user) */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                        {product.ownerName || product.createdByName || "Admin"}
+                        {userData?.name || "Admin User"}
                       </td>
 
+                      {/* Dynamic custom fields */}
                       {dynamicColumns.map((col) => (
                         <td
                           key={col}
@@ -475,6 +491,7 @@ export default function ProductsPage() {
                         </td>
                       ))}
 
+                      {/* Actions column */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                         <div className="flex items-center justify-center gap-2">
                           <button
@@ -508,7 +525,7 @@ export default function ProductsPage() {
                   {!filtered.length && (
                     <tr>
                       <td
-                        colSpan={5 + dynamicColumns.length}
+                        colSpan={8 + dynamicColumns.length}
                         className="px-6 py-8 text-center text-sm text-slate-500"
                       >
                         No products found
@@ -616,6 +633,7 @@ export default function ProductsPage() {
                           onChange={(value) =>
                             setForm({ ...form, categoryId: value })
                           }
+                          isAdmin={userData?.role === "Administrator"}
                           className="w-full"
                         />
                       </div>
@@ -696,19 +714,26 @@ export default function ProductsPage() {
                 </div>
 
                 {/* Custom Fields */}
+                {/* <DynamicFieldsSection
+                  entity="product"
+                  entityId={selectedProduct?.id}
+                  values={form.customFields}
+                  onChange={(values) => setForm({ ...form, customFields: values })}
+                /> */}
+
+                {/* FOOTER */}
+                <div className="border-t border-slate-200/80 px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    {/* <div className="text-sm text-slate-500">
+                      <span className="text-rose-500">*</span> Required fields
+                    </div> */}
+                     {/* Custom Fields */}
                 <DynamicFieldsSection
                   entity="product"
                   entityId={selectedProduct?.id}
                   values={form.customFields}
                   onChange={(values) => setForm({ ...form, customFields: values })}
                 />
-
-                {/* FOOTER */}
-                <div className="border-t border-slate-200/80 px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-slate-500">
-                      <span className="text-rose-500">*</span> Required fields
-                    </div>
 
                     <div className="flex items-center gap-3">
                       <button
@@ -736,21 +761,22 @@ export default function ProductsPage() {
 
         {/* DETAILS DRAWER */}
         {showDetailsDrawer && selectedProduct && (
-          <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-end z-50">
-            <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-lg max-h-[80vh] overflow-y-auto p-6 rounded-2xl shadow-xl border border-slate-200">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Product Details</h2>
+                <h2 className="text-xl font-semibold text-slate-900">Product Details</h2>
                 <button
+                  type="button"
                   onClick={() => setShowDetailsDrawer(false)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="rounded-full p-1 text-gray-500 hover:text-gray-700 hover:bg-slate-100"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-4 text-sm text-slate-800">
                 <div>
-                  <strong>Name:</strong> {selectedProduct.name}
+                  <strong>Product Name:</strong> {selectedProduct.name}
                 </div>
                 <div>
                   <strong>SKU:</strong> {selectedProduct.code || "-"}
@@ -760,29 +786,36 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <strong>Category:</strong>{" "}
-                  {categories.find(c => c.id === selectedProduct.categoryId)?.name || "-"}
+                  {selectedProduct.categoryName ||
+                    categories.find((c) => c.id === selectedProduct.categoryId)?.name ||
+                    "-"}
                 </div>
                 <div>
                   <strong>Price:</strong> ₹{selectedProduct.price ?? 0}
                 </div>
                 <div>
                   <strong>Status:</strong>{" "}
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    selectedProduct.active 
-                      ? "bg-green-100 text-green-800" 
-                      : "bg-red-100 text-red-800"
-                  }`}>
+                  <span
+                    className={`px-2 py-1 rounded text-xs ${
+                      selectedProduct.active
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
                     {selectedProduct.active ? "Active" : "Inactive"}
                   </span>
                 </div>
-                
+                <div>
+                  <strong>Owner:</strong> {selectedProduct.ownerName || userData?.name || "-"}
+                </div>
+
                 {/* Audit Fields */}
-                <div className="pt-3 border-t border-gray-200">
+                <div className="pt-3 border-t border-gray-200 mt-2">
                   <h4 className="font-medium text-gray-900 mb-2">Audit Information</h4>
                   <div className="space-y-1 text-sm text-gray-600">
                     <div>
-                      <strong>Created:</strong>{" "}
-                      {selectedProduct.createdAt 
+                      <strong>Created Date:</strong>{" "}
+                      {selectedProduct.createdAt
                         ? new Date(selectedProduct.createdAt).toLocaleString()
                         : "-"}
                     </div>
@@ -790,13 +823,13 @@ export default function ProductsPage() {
                       <strong>Created By:</strong> {selectedProduct.createdByName || "-"}
                     </div>
                     <div>
-                      <strong>Updated:</strong>{" "}
-                      {selectedProduct.updatedAt 
+                      <strong>Last Updated:</strong>{" "}
+                      {selectedProduct.updatedAt
                         ? new Date(selectedProduct.updatedAt).toLocaleString()
                         : "-"}
                     </div>
                     <div>
-                      <strong>Updated By:</strong> {selectedProduct.updatedByName || "-"}
+                      <strong>Last Updated By:</strong> {selectedProduct.updatedByName || "-"}
                     </div>
                   </div>
                 </div>

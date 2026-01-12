@@ -343,7 +343,16 @@ export default function BanksPage() {
                     Website
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+                    Owner
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
                     Address
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+                    Taluka
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+                    District
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
                     Created
@@ -386,6 +395,9 @@ export default function BanksPage() {
                         "-"
                       )}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                      {bank.ownerName || "-"}
+                    </td>
                     <td className="px-6 py-4 text-sm text-slate-700">
                       <div className="flex items-center gap-1">
                         <MapPin className="h-4 w-4 text-slate-400" />
@@ -393,12 +405,22 @@ export default function BanksPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                      {bank.updatedAt 
-                        ? new Date(bank.updatedAt).toLocaleDateString()
-                        : "-"}
+                      {bank.taluka || "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                      {bank.createdByName || "-"}
+                      {bank.district || "-"}
+                    </td>
+                    {/* Created */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                      {bank.createdAt
+                        ? new Date(bank.createdAt).toLocaleString()
+                        : "-"}
+                    </td>
+                    {/* Updated */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                      {bank.updatedAt
+                        ? new Date(bank.updatedAt).toLocaleString()
+                        : "-"}
                     </td>
                     {/* Dynamic custom fields data */}
                     {dynamicColumns.map(col => (
