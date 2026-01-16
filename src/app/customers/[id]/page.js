@@ -5,7 +5,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { backendApi } from "@/services/api";
-import SearchSelectModal from "@/components/common/SearchSelectModal";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 import DynamicFieldsSection from "@/components/dynamic-fields/DynamicFieldsSection";
 import {
   fetchFieldDefinitions,
@@ -30,9 +32,43 @@ import {
   Upload,
 } from "lucide-react";
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 export default function CustomerDetailPage() {
   const params = useParams();
   const customerId = params?.id;
+
+  const loggedInUser = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const rawUserData = localStorage.getItem("user_data");
+      const rawUser = localStorage.getItem("user");
+      return (rawUserData ? JSON.parse(rawUserData) : null) || (rawUser ? JSON.parse(rawUser) : null);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const resolveOwnerName = (ownerId) => {
+    if (ownerId === null || ownerId === undefined || ownerId === "") return "-";
+    const ownerNumeric = Number(ownerId);
+    if (!Number.isFinite(ownerNumeric)) return String(ownerId);
+    if (loggedInUser && Number(loggedInUser.id) === ownerNumeric) {
+      const first = loggedInUser.firstName || "";
+      const last = loggedInUser.lastName || "";
+      const full = `${first} ${last}`.trim();
+      return full || ownerNumeric;
+    }
+    return ownerNumeric;
+  };
+
+  const formatDueDateWithTime = (dateStr) => {
+    if (!dateStr) return "-";
+    const d = dayjs.utc(dateStr);
+    if (!d.isValid()) return String(dateStr);
+    return d.tz("Asia/Kolkata").format("DD MMM YYYY, hh:mm A");
+  };
 
   const [customer, setCustomer] = useState(null);
   const [cases, setCases] = useState([]);
@@ -77,8 +113,6 @@ export default function CustomerDetailPage() {
   const [tasks, setTasks] = useState([]);
   const [events, setEvents] = useState([]);
   const [calls, setCalls] = useState([]);
-
-  const [productCatalog, setProductCatalog] = useState([]);
 
   const [products, setProducts] = useState([]);
 
@@ -157,6 +191,7 @@ export default function CustomerDetailPage() {
       from: a.startDate || a.startDateTime || a.from,
       to: a.endDate || a.endDateTime || a.to,
       status: a.status,
+      ownerId: a.ownerId,
       owner: a.ownerName || a.owner || a.createdByName || a.createdBy,
       modifiedBy: a.modifiedByName || a.modifiedBy,
       description: a.description,
@@ -179,7 +214,8 @@ export default function CustomerDetailPage() {
 
   const adaptDealProducts = (items) => {
     const list = Array.isArray(items?.content) ? items.content : Array.isArray(items) ? items : [];
-    return list.map((ln) => {
+    return list
+      .map((ln) => {
       const price = Number(ln.price ?? ln.unitPrice ?? 0) || 0;
       const qty = Number(ln.qty ?? ln.quantity ?? 0) || 0;
       const discount = Number(ln.discount ?? ln.discountAmount ?? 0) || 0;
@@ -194,8 +230,16 @@ export default function CustomerDetailPage() {
         qty,
         discount,
         tax,
+        createdAt: ln.createdAt || ln.created_at || null,
       };
-    });
+      })
+      .sort((a, b) => {
+        // newest first
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (bt !== at) return bt - at;
+        return (b.dealProductId || 0) - (a.dealProductId || 0);
+      });
   };
 
   const grandTotal = useMemo(
@@ -386,13 +430,6 @@ export default function CustomerDetailPage() {
         setCalls(callsSettled.status === "fulfilled" ? adaptActivities(callsSettled.value) : []);
         setProducts(productsSettled.status === "fulfilled" ? adaptDealProducts(productsSettled.value) : []);
 
-        try {
-          const catalog = await backendApi.get(`/products?active=true&size=50`);
-          if (isMounted) setProductCatalog(Array.isArray(catalog?.content) ? catalog.content : catalog || []);
-        } catch (_e) {
-          if (isMounted) setProductCatalog([]);
-        }
-
         // Load banks for picker
         try {
           const banksRes = await backendApi.get("/banks?size=200");
@@ -443,13 +480,11 @@ export default function CustomerDetailPage() {
   const [isCallConfigOpen, setIsCallConfigOpen] = useState(false);
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [productSearch, setProductSearch] = useState("");
   const [productFormError, setProductFormError] = useState("");
-  const [showProductSearchModal, setShowProductSearchModal] = useState(false);
   const [productForm, setProductForm] = useState({
-    productId: "",
     productName: "",
     productCode: "",
+    basePrice: "",
     listPrice: "",
     quantity: "1",
     discount: "0",
@@ -532,6 +567,16 @@ export default function CustomerDetailPage() {
     try {
       await backendApi.delete(`/cases/${id}`);
       setCases((prev) => prev.filter((c) => c.id !== id));
+
+      if (Number(selectedCaseId) === Number(id)) {
+        setSelectedCaseId(null);
+        setCaseData(null);
+        setDocs([]);
+        setDocFile(null);
+        setDocType("");
+        if (caseFileInputRef.current) caseFileInputRef.current.value = "";
+        setViewingDoc(null);
+      }
     } catch (err) {
       console.error("Failed to delete case", err);
     }
@@ -539,6 +584,12 @@ export default function CustomerDetailPage() {
 
   async function openCaseViewer(id) {
     if (!id) return;
+
+    // Clear any previous state immediately to avoid showing stale docs/PDFs.
+    setViewingDoc(null);
+    setCaseData(null);
+    setDocs([]);
+
     setSelectedCaseId(id);
     setActiveTab("files");
     try {
@@ -550,6 +601,10 @@ export default function CustomerDetailPage() {
       setDocs(docsRes || []);
     } catch (err) {
       console.error("Failed to load case", err);
+
+      // Ensure we don't keep showing the previous case's docs on error.
+      setCaseData(null);
+      setDocs([]);
     }
   }
 
@@ -775,15 +830,14 @@ export default function CustomerDetailPage() {
 
   function openProductModal() {
     setProductForm({
-      productId: "",
       productName: "",
       productCode: "",
+      basePrice: "",
       listPrice: "",
       quantity: "1",
       discount: "0",
       tax: "0",
     });
-    setProductSearch("");
     setProductFormError("");
     setIsProductModalOpen(true);
   }
@@ -804,29 +858,14 @@ export default function CustomerDetailPage() {
     setIsProductModalOpen(false);
     setProductFormError("");
     setProductForm({
-      productId: "",
       productName: "",
       productCode: "",
+      basePrice: "",
       listPrice: "",
       quantity: "1",
       discount: "0",
       tax: "0",
     });
-    setProductSearch("");
-  }
-
-  function handleProductSelect(product) {
-    setProductForm({
-      productId: product.id,
-      productName: product.name,
-      productCode: product.sku,
-      listPrice: product.price?.toString() || "0",
-      quantity: "1",
-      discount: "0",
-      tax: "0",
-    });
-    setProductSearch(`${product.name} (${product.sku})`);
-    setProductFormError("");
   }
 
   function openBankPicker() {
@@ -1110,44 +1149,38 @@ async function ensureDealId() {
     if (!toCrmId(dealId)) return;
     if (productSaveInFlight.current) return;
     const qty = Number(productForm.quantity) || 0;
-    let selectedProductId = productForm.productId;
-    if (!selectedProductId && productSearch.trim()) {
-      const qRaw = productSearch.trim();
-      const q = qRaw.toLowerCase();
-      const match =
-        productCatalog.find((p) => String(p?.id) === qRaw) ||
-        productCatalog.find((p) => p?.name?.toLowerCase() === q || p?.code?.toLowerCase() === q) ||
-        productCatalog.find(
-          (p) =>
-            (p?.name || "").toLowerCase().includes(q) ||
-            (p?.code || "").toLowerCase().includes(q)
-        );
-      if (match?.id) {
-        selectedProductId = String(match.id);
-        setProductForm((prev) => ({
-          ...prev,
-          productId: String(match.id),
-          productName: match.name,
-          productCode: match.code,
-          listPrice: String(match.price),
-        }));
-      }
-    }
-
-    if (!selectedProductId || Number.isNaN(qty) || qty <= 0) {
-      setProductFormError(
-        productSearch.trim() && !selectedProductId
-          ? "No product matched your search. Please select a product from the list."
-          : "Please select a product and enter a valid quantity."
-      );
-      return;
-    }
     try {
       productSaveInFlight.current = true;
+
+      if (!productForm.productName?.trim()) {
+        setProductFormError("Please enter a product name.");
+        return;
+      }
+      if (Number.isNaN(qty) || qty <= 0) {
+        setProductFormError("Please enter a valid quantity.");
+        return;
+      }
+
+      const basePrice = Number(productForm.basePrice) || 0;
+      const listPrice = Number(productForm.listPrice) || 0;
+
+      const createdProduct = await backendApi.post(`/products`, {
+        name: productForm.productName.trim(),
+        code: productForm.productCode || "",
+        price: basePrice,
+        active: true,
+      });
+
+      const createdProductId = createdProduct?.id ? String(createdProduct.id) : "";
+      if (!createdProductId) {
+        setProductFormError("Failed to create product.");
+        return;
+      }
+
       await backendApi.post(`/deals/${dealId}/products`, {
-        productId: Number(selectedProductId),
+        productId: Number(createdProductId),
         quantity: qty,
-        unitPrice: Number(productForm.listPrice) || 0,
+        unitPrice: listPrice,
         discount: Number(productForm.discount) || 0,
         tax: Number(productForm.tax) || 0,
       });
@@ -1394,7 +1427,7 @@ async function ensureDealId() {
                     {customer?.description || "No description added yet for this customer case."}
                   </div>
                 </div>
-                <div className="space-y-3">
+                {/* <div className="space-y-3">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Financial Snapshot
                   </div>
@@ -1408,7 +1441,7 @@ async function ensureDealId() {
                       <span className="font-semibold text-slate-900">{formatCurrency(deal?.requiredAmount)}</span>
                     </div>
                   </div>
-                </div>
+                </div> */}
                 {lastModified && (
                   <div className="mt-5 border-t border-dashed border-slate-200 pt-3 text-[11px] text-slate-500">
                     Last modified on {lastModified.toLocaleDateString(undefined, { weekday: "long" })},{" "}
@@ -1463,41 +1496,45 @@ async function ensureDealId() {
                     <div className="text-sm font-semibold text-slate-900">Activity Timeline</div>
                     <div className="text-xs text-slate-500">Most recent stage changes appear on top</div>
                   </div>
-                  <div className="space-y-6">
-                    {timelineGroups.map((group) => (
-                      <div key={group.key} className="relative pl-4">
-                        <div className="absolute left-1.5 top-2 bottom-0 w-px bg-gradient-to-b from-emerald-400/40 via-slate-200 to-transparent" />
-                        <div className="mb-3 flex items-center gap-2 text-[11px] font-medium text-slate-500">
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          </div>
-                          <span>{group.key}</span>
-                        </div>
-                        <div className="space-y-3">
-                          {group.items.map((item) => (
-                            <div
-                              key={item.id}
-                              className="group flex items-start gap-3 rounded-xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm transition hover:-translate-y-[1px] hover:border-emerald-400/70 hover:shadow-md"
-                            >
-                              <div className="mt-0.5 w-16 text-[11px] tabular-nums text-slate-400">
-                                {new Date(item.time).toLocaleTimeString()}
+                  <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
+                    <div className="max-h-[290px] overflow-auto p-4">
+                      <div className="space-y-6">
+                        {timelineGroups.map((group) => (
+                          <div key={group.key} className="relative pl-4">
+                            <div className="absolute left-1.5 top-2 bottom-0 w-px bg-gradient-to-b from-emerald-400/40 via-slate-200 to-transparent" />
+                            <div className="mb-3 flex items-center gap-2 text-[11px] font-medium text-slate-500">
+                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                               </div>
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="text-sm font-medium text-slate-900">{item.message}</div>
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                                    Stage update
-                                  </span>
-                                </div>
-                                <div className="mt-1 text-[11px] text-slate-500">
-                                  by <span className="font-medium text-slate-700">{item.actor}</span>
-                                </div>
-                              </div>
+                              <span>{group.key}</span>
                             </div>
-                          ))}
-                        </div>
+                            <div className="space-y-3">
+                              {group.items.map((item) => (
+                                <div
+                                  key={item.id}
+                                  className="group flex items-start gap-3 rounded-xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm transition hover:-translate-y-[1px] hover:border-emerald-400/70 hover:shadow-md"
+                                >
+                                  <div className="mt-0.5 w-16 text-[11px] tabular-nums text-slate-400">
+                                    {new Date(item.time).toLocaleTimeString()}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="text-sm font-medium text-slate-900">{item.message}</div>
+                                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                        Stage update
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 text-[11px] text-slate-500">
+                                      by <span className="font-medium text-slate-700">{item.actor}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1549,27 +1586,31 @@ async function ensureDealId() {
                       placeholder="Add a Title"
                     />
                   </div>
-                  <div className="mt-6 space-y-3">
-                    {notes.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-3 text-xs text-slate-500">
-                        This record doesn&apos;t have any notes yet. Capture important context and decisions here.
-                      </div>
-                    ) : (
-                      notes.map((n) => (
-                        <div
-                          key={n.id}
-                          className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 text-sm text-slate-700 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="text-sm font-semibold text-slate-900">{n.title || "Note"}</div>
-                            <div className="text-[11px] text-slate-500">
-                              {(n.createdByName || n.createdBy || "System")}{n.createdAt ? ` • ${new Date(n.createdAt).toLocaleString()}` : ""}
-                            </div>
+                  <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
+                    <div className="max-h-[290px] overflow-auto p-4">
+                      <div className="space-y-3">
+                        {notes.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-3 text-xs text-slate-500">
+                            This record doesn&apos;t have any notes yet. Capture important context and decisions here.
                           </div>
-                          <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{n.body || n.text || ""}</div>
-                        </div>
-                      ))
-                    )}
+                        ) : (
+                          notes.map((n) => (
+                            <div
+                              key={n.id}
+                              className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 text-sm text-slate-700 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="text-sm font-semibold text-slate-900">{n.title || "Note"}</div>
+                                <div className="text-[11px] text-slate-500">
+                                  {(n.createdByName || n.createdBy || "System")}{n.createdAt ? ` • ${new Date(n.createdAt).toLocaleString()}` : ""}
+                                </div>
+                              </div>
+                              <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{n.body || n.text || ""}</div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1618,280 +1659,286 @@ async function ensureDealId() {
                   </div>
 
                   {activitiesTab === "tasks" && (
-                    <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
-                      <table className="min-w-full divide-y divide-slate-100">
-                        <thead className="bg-slate-50/80">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Task Name
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Due Date
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Status
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Task Owner
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Description
-                            </th>
-                            {taskColumnConfig.priority && (
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
+                      <div className="max-h-[290px] overflow-auto">
+                        <table className="min-w-full divide-y divide-slate-100">
+                          <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+                            <tr>
                               <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                Priority
+                                Task Name
                               </th>
-                            )}
-                            {taskColumnConfig.expenseAmount && (
                               <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                Expense Amount
+                                Due Date
                               </th>
-                            )}
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Action
-                            </th>
-                            <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              <button
-                                type="button"
-                                onClick={() => setIsTaskConfigOpen(true)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
-                                title="Customize columns"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white/90">
-                          {tasks.map((t) => (
-                            <tr key={t.id} className="transition hover:bg-slate-50/80">
-                              <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-indigo-700">
-                                {t.name}
-                              </td>
-                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
-                                {t.dueDate}
-                              </td>
-                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
-                                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                                  {t.status}
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{t.owner}</td>
-                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
-                                {t.description || "—"}
-                              </td>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Status
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Task Owner
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Description
+                              </th>
                               {taskColumnConfig.priority && (
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{t.priority || "—"}</td>
+                                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Priority
+                                </th>
                               )}
                               {taskColumnConfig.expenseAmount && (
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{t.expenseAmount || "—"}</td>
+                                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Expense Amount
+                                </th>
                               )}
-                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => openTaskEdit(t)}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
-                                  >
-                                    <Edit3 className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      if (!confirm("Delete this task?")) return;
-                                      await handleDeleteActivity("Task", t.id);
-                                    }}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-rose-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600"
-                                  >
-                                    <TrashIcon />
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-400">—</td>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Action
+                              </th>
+                              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsTaskConfigOpen(true)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                                  title="Customize columns"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </button>
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white/90">
+                            {tasks.map((t) => (
+                              <tr key={t.id} className="transition hover:bg-slate-50/80">
+                                <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-indigo-700">
+                                  {t.name}
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                                  {formatDueDateWithTime(t.dueDate)}
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                    {t.status}
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{resolveOwnerName(t.ownerId ?? t.owner)}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
+                                  {t.description || "—"}
+                                </td>
+                                {taskColumnConfig.priority && (
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{t.priority || "—"}</td>
+                                )}
+                                {taskColumnConfig.expenseAmount && (
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{t.expenseAmount || "—"}</td>
+                                )}
+                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openTaskEdit(t)}
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                                    >
+                                      <Edit3 className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (!confirm("Delete this task?")) return;
+                                        await handleDeleteActivity("Task", t.id);
+                                      }}
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-rose-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600"
+                                    >
+                                      <TrashIcon />
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-400">—</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
 
                   {activitiesTab === "events" && (
-                    <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
-                      <table className="min-w-full divide-y divide-slate-100">
-                        <thead className="bg-slate-50/80">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Title
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              From
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              To
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Host
-                            </th>
-                            {eventColumnConfig.location && (
-                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                Location
-                              </th>
-                            )}
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Action
-                            </th>
-                            <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              <button
-                                type="button"
-                                onClick={() => setIsEventConfigOpen(true)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
-                                title="Customize columns"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white/90">
-                          {events.length === 0 ? (
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
+                      <div className="max-h-[290px] overflow-auto">
+                        <table className="min-w-full divide-y divide-slate-100">
+                          <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
                             <tr>
-                              <td className="px-4 py-4 text-center text-xs text-slate-500" colSpan={eventColumnConfig.location ? 7 : 6}>
-                                No events yet. Use + Event to create one.
-                              </td>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Title
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                From
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                To
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Host
+                              </th>
+                              {eventColumnConfig.location && (
+                                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Location
+                                </th>
+                              )}
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Action
+                              </th>
+                              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsEventConfigOpen(true)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                                  title="Customize columns"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </button>
+                              </th>
                             </tr>
-                          ) : (
-                            events.map((e) => (
-                              <tr key={e.id} className="transition hover:bg-slate-50/80">
-                                <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-indigo-700">
-                                  {e.name || e.title}
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white/90">
+                            {events.length === 0 ? (
+                              <tr>
+                                <td className="px-4 py-4 text-center text-xs text-slate-500" colSpan={eventColumnConfig.location ? 7 : 6}>
+                                  No events yet. Use + Event to create one.
                                 </td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.from || e.date}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.to || "—"}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.owner || e.host || "—"}</td>
-                                {eventColumnConfig.location && (
-                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.location || "—"}</td>
-                                )}
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => openEventEdit(e)}
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
-                                    >
-                                      <Edit3 className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        if (!confirm("Delete this event?")) return;
-                                        await handleDeleteActivity("Event", e.id);
-                                      }}
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-rose-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600"
-                                    >
-                                      <TrashIcon />
-                                    </button>
-                                  </div>
-                                </td>
-                                <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-400">—</td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              events.map((e) => (
+                                <tr key={e.id} className="transition hover:bg-slate-50/80">
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-indigo-700">
+                                    {e.name || e.title}
+                                  </td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.from || e.date}</td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.to || "—"}</td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.owner || e.host || "—"}</td>
+                                  {eventColumnConfig.location && (
+                                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{e.location || "—"}</td>
+                                  )}
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEventEdit(e)}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                                      >
+                                        <Edit3 className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (!confirm("Delete this event?")) return;
+                                          await handleDeleteActivity("Event", e.id);
+                                        }}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-rose-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600"
+                                      >
+                                        <TrashIcon />
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-400">—</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
 
                   {activitiesTab === "calls" && (
-                    <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
-                      <table className="min-w-full divide-y divide-slate-100">
-                        <thead className="bg-slate-50/80">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              To / From
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Call Type
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Call Start Time
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Modified Time
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Call Owner
-                            </th>
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Call Duration
-                            </th>
-                            {callColumnConfig.purpose && (
-                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                Call Purpose
-                              </th>
-                            )}
-                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Action
-                            </th>
-                            <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              <button
-                                type="button"
-                                onClick={() => setIsCallConfigOpen(true)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
-                                title="Customize columns"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white/90">
-                          {calls.length === 0 ? (
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
+                      <div className="max-h-[290px] overflow-auto">
+                        <table className="min-w-full divide-y divide-slate-100">
+                          <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
                             <tr>
-                              <td className="px-4 py-4 text-center text-xs text-slate-500" colSpan={callColumnConfig.purpose ? 9 : 8}>
-                                No calls yet. Use + Call to create one.
-                              </td>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                To / From
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Call Type
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Call Start Time
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Modified Time
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Call Owner
+                              </th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Call Duration
+                              </th>
+                              {callColumnConfig.purpose && (
+                                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Call Purpose
+                                </th>
+                              )}
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Action
+                              </th>
+                              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCallConfigOpen(true)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                                  title="Customize columns"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </button>
+                              </th>
                             </tr>
-                          ) : (
-                            calls.map((c) => (
-                              <tr key={c.id} className="transition hover:bg-slate-50/80">
-                                <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-indigo-700">
-                                  {c.toFrom || c.subject}
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white/90">
+                            {calls.length === 0 ? (
+                              <tr>
+                                <td className="px-4 py-4 text-center text-xs text-slate-500" colSpan={callColumnConfig.purpose ? 9 : 8}>
+                                  No calls yet. Use + Call to create one.
                                 </td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.callType || "Outbound"}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.startTime || c.date}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.modifiedTime || "—"}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.owner || "—"}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.duration || "—"}</td>
-                                {callColumnConfig.purpose && (
-                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.callPurpose || "—"}</td>
-                                )}
-                                <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => openCallEdit(c)}
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
-                                    >
-                                      <Edit3 className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        if (!confirm("Delete this call?")) return;
-                                        await handleDeleteActivity("Call", c.id);
-                                      }}
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-rose-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600"
-                                    >
-                                      <TrashIcon />
-                                    </button>
-                                  </div>
-                                </td>
-                                <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-400">—</td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              calls.map((c) => (
+                                <tr key={c.id} className="transition hover:bg-slate-50/80">
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-indigo-700">
+                                    {c.toFrom || c.subject}
+                                  </td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.callType || "Outbound"}</td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.startTime || c.date}</td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.modifiedTime || "—"}</td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.owner || "—"}</td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.duration || "—"}</td>
+                                  {callColumnConfig.purpose && (
+                                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{c.callPurpose || "—"}</td>
+                                  )}
+                                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openCallEdit(c)}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+                                      >
+                                        <Edit3 className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (!confirm("Delete this call?")) return;
+                                          await handleDeleteActivity("Call", c.id);
+                                        }}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-rose-500 shadow-sm transition hover:border-rose-300 hover:text-rose-600"
+                                      >
+                                        <TrashIcon />
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-400">—</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1903,55 +1950,57 @@ async function ensureDealId() {
                     <div className="text-sm font-semibold text-slate-900">Stage History</div>
                     <div className="text-xs text-slate-500">How long the case spent in each stage</div>
                   </div>
-                  <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
-                    <table className="min-w-full divide-y divide-slate-100">
-                      <thead className="bg-slate-50/80">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Stage
-                          </th>
-                          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Amount
-                          </th>
-                          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Stage Duration (Days)
-                          </th>
-                          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Modified By
-                          </th>
-                          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Timestamp
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white/90">
-                        {stageHistory.map((row, idx) => (
-                          <tr
-                            key={row.id}
-                            className={`transition ${idx === 0 ? "bg-indigo-50/50" : "hover:bg-slate-50/80"}`}
-                          >
-                            <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-slate-900">
-                              {row.stage}
-                              {idx === 0 ? " (Current Stage)" : ""}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{formatCurrency(row.amount)}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-900">
-                              <div className="flex items-center gap-2">
-                                <div className="h-1.5 flex-1 rounded-full bg-slate-100">
-                                  <div
-                                    className="h-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500"
-                                    style={{ width: `${Math.min(100, (row.durationDays || 1) * 10)}%` }}
-                                  />
-                                </div>
-                                <span className="w-8 text-right tabular-nums">{row.durationDays}</span>
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{row.modifiedBy}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{new Date(row.timestamp).toLocaleString()}</td>
+                  <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
+                    <div className="max-h-[290px] overflow-auto">
+                      <table className="min-w-full divide-y divide-slate-100">
+                        <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              Stage
+                            </th>
+                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              Amount
+                            </th>
+                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                             Duration (Days)
+                            </th>
+                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              Modified By
+                            </th>
+                            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              Timestamp
+                            </th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white/90">
+                          {stageHistory.map((row, idx) => (
+                            <tr
+                              key={row.id}
+                              className={`transition ${idx === 0 ? "bg-indigo-50/50" : "hover:bg-slate-50/80"}`}
+                            >
+                              <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-slate-900">
+                                {row.stage}
+                                {idx === 0 ? " (Current Stage)" : ""}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{formatCurrency(row.amount)}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-900">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-1.5 flex-1 rounded-full bg-slate-100">
+                                    <div
+                                      className="h-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500"
+                                      style={{ width: `${Math.min(100, (row.durationDays || 1) * 10)}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-8 text-right tabular-nums">{row.durationDays}</span>
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">{row.modifiedBy}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{new Date(row.timestamp).toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2048,15 +2097,21 @@ async function ensureDealId() {
                           <div className="grid grid-cols-2 gap-4">
                             {docs.map((doc) => (
                               <div key={doc.id} className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm transition hover:-translate-y-[1px] hover:border-indigo-300 hover:shadow-md">
-                                <div className="flex items-center gap-3">
+                                <div className="flex min-w-0 items-center gap-3">
                                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 to-red-500 text-white shadow-sm">
                                     <PdfIcon />
                                   </div>
-                                  <div>
-                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                                  <div className="min-w-0">
+                                    <div
+                                      className="max-w-[260px] truncate text-xs font-semibold uppercase tracking-wide text-slate-700"
+                                      title={doc.documentName || "Document"}
+                                    >
                                       {doc.documentName || "Document"}
                                     </div>
-                                    <div className="text-sm font-medium text-slate-900">
+                                    <div
+                                      className="max-w-[260px] truncate text-sm font-medium text-slate-900"
+                                      title={doc.fileName || "File"}
+                                    >
                                       {doc.fileName || "File"}
                                     </div>
                                   </div>
@@ -2145,8 +2200,9 @@ async function ensureDealId() {
                     <div className="text-xs text-slate-500">Billing-grade view of charges linked to this case</div>
                   </div>
                   <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-950/[0.01] shadow-sm">
-                    <table className="min-w-full divide-y divide-slate-100">
-                      <thead className="bg-slate-50/80">
+                    <div className="max-h-[260px] overflow-auto">
+                      <table className="min-w-full divide-y divide-slate-100">
+                        <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
                         <tr>
                           <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                             Product
@@ -2170,8 +2226,8 @@ async function ensureDealId() {
                             Action
                           </th>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white/90">
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white/90">
                         {products.map((p) => (
                           <tr key={p.id} className="transition hover:bg-slate-50/80">
                             <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-900">
@@ -2211,10 +2267,11 @@ async function ensureDealId() {
                             </td>
                           </tr>
                         ))}
-                      </tbody>
-                    </table>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <div className="mt-4 flex items-center justify-between">
+                  <div className="sticky bottom-0 mt-4 flex items-center justify-between bg-white/90 py-2 backdrop-blur">
                     <button
                       onClick={openProductModal}
                       className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 shadow-sm transition hover:border-indigo-400 hover:text-indigo-700"
@@ -2281,7 +2338,7 @@ async function ensureDealId() {
                   <div>
                     <div className="text-sm font-semibold text-slate-900">Add Product</div>
                     <div className="mt-0.5 text-xs text-slate-500">
-                      Select a product and configure pricing for this case
+                      Create a new product and configure pricing for this case
                     </div>
                   </div>
                   <button
@@ -2302,75 +2359,46 @@ async function ensureDealId() {
                     )}
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-700">Product</label>
-                      <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <label className="block text-xs font-medium text-slate-700">Product Name</label>
+                      <input
+                        value={productForm.productName}
+                        onChange={(e) => {
+                          setProductForm((prev) => ({ ...prev, productName: e.target.value }));
+                          setProductFormError("");
+                        }}
+                        placeholder="Product name"
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700">Product Code (optional)</label>
                         <input
-                          type="text"
-                          value={productSearch}
-                          onClick={() => setShowProductSearchModal(true)}
+                          value={productForm.productCode}
+                          onChange={(e) => setProductForm((prev) => ({ ...prev, productCode: e.target.value }))}
+                          placeholder="Code"
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700">Base Price (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={productForm.basePrice}
                           onChange={(e) => {
-                            setProductSearch(e.target.value);
+                            const v = e.target.value;
+                            setProductForm((prev) => ({
+                              ...prev,
+                              basePrice: v,
+                              listPrice: prev.listPrice || v,
+                            }));
                             setProductFormError("");
                           }}
-                          placeholder="Search products by name or code"
-                          className="w-full border-none bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none cursor-pointer"
-                          readOnly
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-400"
+                          placeholder="0"
                         />
-                        <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1 text-xs">
-                          {productCatalog
-                            .filter((p) => {
-                              if (!productSearch.trim()) return true;
-                              const q = productSearch.trim().toLowerCase();
-                              return (
-                                p.name.toLowerCase().includes(q) ||
-                                p.code.toLowerCase().includes(q)
-                              );
-                            })
-                            .map((p) => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => {
-                                  setProductForm((prev) => ({
-                                    ...prev,
-                                    productId: String(p.id),
-                                    productName: p.name,
-                                    productCode: p.code,
-                                    listPrice: String(p.price || 0),
-                                    discount: "0",
-                                    tax: "0",
-                                  }));
-                                  setProductSearch(`${p.name} (${p.code})`);
-                                  setProductFormError("");
-                                }}
-                                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition hover:bg-slate-100 ${
-                                  productForm.productId === String(p.id)
-                                    ? "bg-slate-900 text-slate-50 hover:bg-slate-900/90"
-                                    : "text-slate-700"
-                                }`}
-                              >
-                                <span className="flex items-center gap-2">
-                                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 text-[10px] font-semibold text-white">
-                                    {p.code}
-                                  </span>
-                                  <span>{p.name}</span>
-                                </span>
-                                <span className="text-[11px] text-slate-500">
-                                  {p.price.toLocaleString("en-IN")}
-                                </span>
-                              </button>
-                            ))}
-                        </div>
-
-                        {productForm.productName && (
-                          <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            <span>
-                              Selected: {productForm.productName}
-                              {productForm.productCode ? ` (${productForm.productCode})` : ""}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </div>
 
@@ -3271,14 +3299,6 @@ async function ensureDealId() {
         </div>
       </>
     )}
-
-    <SearchSelectModal
-      isOpen={showProductSearchModal}
-      onClose={() => setShowProductSearchModal(false)}
-      onSelect={handleProductSelect}
-      entityType="product"
-      placeholder="Search products by name or code"
-    />
 
     {/* Customer Edit Modal */}
     {showCustomerEditModal && (

@@ -13,10 +13,10 @@ export default function DynamicFieldsSection({
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between">
-        <div>
+        {/* <div>
           <h3 className="text-sm font-medium text-slate-900">{title}</h3>
           <p className="mt-1 text-xs text-slate-500">Fields are configured by Admin and rendered dynamically.</p>
-        </div>
+        </div> */}
       </div>
 
       {activeDefs.length === 0 ? (
